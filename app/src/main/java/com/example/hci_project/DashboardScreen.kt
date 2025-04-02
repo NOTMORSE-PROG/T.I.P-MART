@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,7 +50,7 @@ fun DashboardScreen(
             name = "TIP Engineering Calculator",
             price = "₱450",
             seller = "John Doe",
-            imageRes = R.drawable.placeholder,
+            imageRes = R.drawable.ic_launcher_foreground,
             category = "Electronics"
         ),
         Product(
@@ -57,7 +58,7 @@ fun DashboardScreen(
             name = "Data Structures Textbook",
             price = "₱350",
             seller = "Jane Smith",
-            imageRes = R.drawable.placeholder,
+            imageRes = R.drawable.ic_launcher_foreground,
             category = "Books"
         ),
         Product(
@@ -65,7 +66,7 @@ fun DashboardScreen(
             name = "TIP Uniform (Medium)",
             price = "₱800",
             seller = "Mike Johnson",
-            imageRes = R.drawable.placeholder,
+            imageRes = R.drawable.ic_launcher_foreground,
             category = "Clothing"
         ),
         Product(
@@ -73,7 +74,7 @@ fun DashboardScreen(
             name = "Homemade Cookies (12 pcs)",
             price = "₱120",
             seller = "Sarah Lee",
-            imageRes = R.drawable.placeholder,
+            imageRes = R.drawable.ic_launcher_foreground,
             category = "Food"
         ),
         Product(
@@ -81,7 +82,7 @@ fun DashboardScreen(
             name = "Programming Tutoring (per hour)",
             price = "₱250",
             seller = "Alex Chen",
-            imageRes = R.drawable.placeholder,
+            imageRes = R.drawable.ic_launcher_foreground,
             category = "Services"
         ),
         Product(
@@ -89,7 +90,7 @@ fun DashboardScreen(
             name = "Scientific Calculator",
             price = "₱350",
             seller = "David Wilson",
-            imageRes = R.drawable.placeholder,
+            imageRes = R.drawable.ic_launcher_foreground,
             category = "Electronics"
         ),
         Product(
@@ -97,7 +98,7 @@ fun DashboardScreen(
             name = "TIP Lanyard",
             price = "₱75",
             seller = "Emma Garcia",
-            imageRes = R.drawable.placeholder,
+            imageRes = R.drawable.ic_launcher_foreground,
             category = "Accessories"
         ),
         Product(
@@ -105,7 +106,7 @@ fun DashboardScreen(
             name = "Engineering Notebook",
             price = "₱120",
             seller = "Carlos Rodriguez",
-            imageRes = R.drawable.placeholder,
+            imageRes = R.drawable.ic_launcher_foreground,
             category = "School Supplies"
         )
     )
@@ -164,12 +165,18 @@ fun DashboardScreen(
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Notifications, contentDescription = "Notifications") },
-                    label = { Text("Notifications") }
+                    icon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = "Messages") },
+                    label = { Text("Messages") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
+                    icon = { Icon(Icons.Default.Notifications, contentDescription = "Notifications") },
+                    label = { Text("Notice") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 },
                     icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                     label = { Text("Settings") }
                 )
@@ -185,8 +192,9 @@ fun DashboardScreen(
                 modifier = Modifier.padding(paddingValues)
             )
             1 -> SellTab(modifier = Modifier.padding(paddingValues))
-            2 -> NotificationsTab(modifier = Modifier.padding(paddingValues))
-            3 -> SettingsTab(
+            2 -> MessagesTab(modifier = Modifier.padding(paddingValues))
+            3 -> NotificationsTab(modifier = Modifier.padding(paddingValues))
+            4 -> SettingsTab(
                 onLogout = onLogout,
                 modifier = Modifier.padding(paddingValues)
             )
@@ -394,6 +402,173 @@ fun SellTab(modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun MessagesTab(modifier: Modifier = Modifier) {
+    // Sample messages
+    val messages = listOf(
+        Message(
+            id = 1,
+            senderName = "John Doe",
+            lastMessage = "Hi, I'm interested in your calculator. Is it still available?",
+            time = "10:30 AM",
+            unread = true,
+            avatarRes = R.drawable.ic_launcher_foreground
+        ),
+        Message(
+            id = 2,
+            senderName = "Jane Smith",
+            lastMessage = "Thanks for the quick delivery! The textbook is in great condition.",
+            time = "Yesterday",
+            unread = false,
+            avatarRes = R.drawable.ic_launcher_foreground
+        ),
+        Message(
+            id = 3,
+            senderName = "Alex Chen",
+            lastMessage = "When are you available for the tutoring session?",
+            time = "Yesterday",
+            unread = true,
+            avatarRes = R.drawable.ic_launcher_foreground
+        ),
+        Message(
+            id = 4,
+            senderName = "Sarah Lee",
+            lastMessage = "I'll have a new batch of cookies next week if you're interested.",
+            time = "Monday",
+            unread = false,
+            avatarRes = R.drawable.ic_launcher_foreground
+        ),
+        Message(
+            id = 5,
+            senderName = "Mike Johnson",
+            lastMessage = "Do you have this uniform in size Large?",
+            time = "Sunday",
+            unread = false,
+            avatarRes = R.drawable.ic_launcher_foreground
+        )
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Messages",
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        if (messages.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No messages yet",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(messages) { message ->
+                    MessageItem(message = message)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MessageItem(
+    message: Message,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { /* TODO: Open conversation */ },
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (message.unread)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Avatar
+            Box(
+                modifier = Modifier
+                    .size(50.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Image(
+                    painter = painterResource(id = message.avatarRes),
+                    contentDescription = "Avatar for ${message.senderName}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = message.senderName,
+                        fontWeight = if (message.unread) FontWeight.Bold else FontWeight.Normal
+                    )
+                    Text(
+                        text = message.time,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = message.lastMessage,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (message.unread) 0.8f else 0.6f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 14.sp
+                )
+            }
+
+            if (message.unread) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun NotificationsTab(modifier: Modifier = Modifier) {
     // Sample notifications
     val notifications = listOf(
@@ -566,18 +741,18 @@ fun SettingsTab(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "John Doe",
+                    text = "Mark Andrei A. Condino",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
 
                 Text(
-                    text = "QWERTY123@tip.edu.ph",
+                    text = "mmacondino@tip.edu.ph",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
 
                 Text(
-                    text = "Student ID: 1234567",
+                    text = "Student ID: 2310841",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
 
@@ -712,6 +887,15 @@ data class Notification(
     val description: String,
     val time: String,
     val read: Boolean
+)
+
+data class Message(
+    val id: Int,
+    val senderName: String,
+    val lastMessage: String,
+    val time: String,
+    val unread: Boolean,
+    val avatarRes: Int
 )
 
 @Preview(showBackground = true)
