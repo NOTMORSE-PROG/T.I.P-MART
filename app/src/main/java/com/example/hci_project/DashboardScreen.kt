@@ -38,6 +38,7 @@ fun DashboardScreen(
     onLogout: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
+    var showAboutScreen by remember { mutableStateOf(false) }
 
     // Sample data
     val categories = listOf(
@@ -118,86 +119,91 @@ fun DashboardScreen(
         products.filter { it.category == selectedCategory }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "T.I.P MART",
-                        fontWeight = FontWeight.Bold
+    if (showAboutScreen) {
+        AboutScreen(onBackClick = { showAboutScreen = false })
+    } else {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "T.I.P MART",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    actions = {
+                        IconButton(onClick = { /* TODO: Search functionality */ }) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search"
+                            )
+                        }
+                        IconButton(onClick = { /* TODO: Cart functionality */ }) {
+                            Icon(
+                                imageVector = Icons.Default.ShoppingCart,
+                                contentDescription = "Cart"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                        actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                     )
-                },
-                actions = {
-                    IconButton(onClick = { /* TODO: Search functionality */ }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search"
-                        )
-                    }
-                    IconButton(onClick = { /* TODO: Cart functionality */ }) {
-                        Icon(
-                            imageVector = Icons.Default.ShoppingCart,
-                            contentDescription = "Cart"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                    label = { Text("Home") }
+            },
+            bottomBar = {
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                        label = { Text("Home") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        icon = { Icon(Icons.Default.AddCircle, contentDescription = "Sell") },
+                        label = { Text("Sell") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        icon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = "Messages") },
+                        label = { Text("Messages") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        icon = { Icon(Icons.Default.Notifications, contentDescription = "Notifications") },
+                        label = { Text("Notice") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 4,
+                        onClick = { selectedTab = 4 },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                        label = { Text("Settings") }
+                    )
+                }
+            }
+        ) { paddingValues ->
+            when (selectedTab) {
+                0 -> HomeTab(
+                    categories = categories,
+                    products = filteredProducts,
+                    selectedCategory = selectedCategory,
+                    onCategorySelected = { selectedCategory = it },
+                    modifier = Modifier.padding(paddingValues)
                 )
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.AddCircle, contentDescription = "Sell") },
-                    label = { Text("Sell") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = "Messages") },
-                    label = { Text("Messages") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.Notifications, contentDescription = "Notifications") },
-                    label = { Text("Notice") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 4,
-                    onClick = { selectedTab = 4 },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text("Settings") }
+                1 -> SellTab(modifier = Modifier.padding(paddingValues))
+                2 -> MessagesTab(modifier = Modifier.padding(paddingValues))
+                3 -> NotificationsTab(modifier = Modifier.padding(paddingValues))
+                4 -> SettingsTab(
+                    onLogout = onLogout,
+                    onAboutClick = { showAboutScreen = true },
+                    modifier = Modifier.padding(paddingValues)
                 )
             }
-        }
-    ) { paddingValues ->
-        when (selectedTab) {
-            0 -> HomeTab(
-                categories = categories,
-                products = filteredProducts,
-                selectedCategory = selectedCategory,
-                onCategorySelected = { selectedCategory = it },
-                modifier = Modifier.padding(paddingValues)
-            )
-            1 -> SellTab(modifier = Modifier.padding(paddingValues))
-            2 -> MessagesTab(modifier = Modifier.padding(paddingValues))
-            3 -> NotificationsTab(modifier = Modifier.padding(paddingValues))
-            4 -> SettingsTab(
-                onLogout = onLogout,
-                modifier = Modifier.padding(paddingValues)
-            )
         }
     }
 }
@@ -694,6 +700,7 @@ fun NotificationItem(
 @Composable
 fun SettingsTab(
     onLogout: () -> Unit,
+    onAboutClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -801,7 +808,7 @@ fun SettingsTab(
         SettingsItem(
             icon = Icons.Default.Info,
             title = "About",
-            onClick = { /* TODO: Navigate to about */ }
+            onClick = onAboutClick
         )
 
         Spacer(modifier = Modifier.weight(1f))
