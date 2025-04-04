@@ -1,9 +1,21 @@
 package com.example.hci_project
 
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -15,9 +27,46 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Message
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,12 +79,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.hci_project.ui.theme.HCI_PROJECYTheme
+import com.example.hci_project.viewmodel.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    viewModel: AuthViewModel = hiltViewModel()
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showAboutScreen by remember { mutableStateOf(false) }
@@ -175,7 +227,7 @@ fun DashboardScreen(
                     NavigationBarItem(
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
-                        icon = { Icon(Icons.Default.Notifications, contentDescription = "Notifications") },
+                        icon = { Icon(Icons.Default.Notifications, contentDescription = "Notice") },
                         label = { Text("Notice") }
                     )
                     NavigationBarItem(
@@ -197,11 +249,12 @@ fun DashboardScreen(
                 )
                 1 -> SellTab(modifier = Modifier.padding(paddingValues))
                 2 -> MessagesTab(modifier = Modifier.padding(paddingValues))
-                3 -> NotificationsTab(modifier = Modifier.padding(paddingValues))
+                3 -> NoticeTab(modifier = Modifier.padding(paddingValues))
                 4 -> SettingsTab(
                     onLogout = onLogout,
                     onAboutClick = { showAboutScreen = true },
-                    modifier = Modifier.padding(paddingValues)
+                    modifier = Modifier.padding(paddingValues),
+                    viewModel = viewModel
                 )
             }
         }
@@ -575,7 +628,7 @@ fun MessageItem(
 }
 
 @Composable
-fun NotificationsTab(modifier: Modifier = Modifier) {
+fun NoticeTab(modifier: Modifier = Modifier) {
     // Sample notifications
     val notifications = listOf(
         Notification(
@@ -607,7 +660,7 @@ fun NotificationsTab(modifier: Modifier = Modifier) {
             .padding(16.dp)
     ) {
         Text(
-            text = "Notifications",
+            text = "Notice",
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
             modifier = Modifier.padding(bottom = 16.dp)
@@ -621,7 +674,7 @@ fun NotificationsTab(modifier: Modifier = Modifier) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No notifications yet",
+                    text = "No notices yet",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     textAlign = TextAlign.Center
                 )
@@ -701,8 +754,16 @@ fun NotificationItem(
 fun SettingsTab(
     onLogout: () -> Unit,
     onAboutClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: AuthViewModel = hiltViewModel()
 ) {
+    val currentUser by viewModel.currentUser.collectAsState()
+
+    // Debug log to check what user data we have
+    LaunchedEffect(currentUser) {
+        Log.d("SettingsTab", "Current user data: ${currentUser?.toString()}")
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -715,108 +776,140 @@ fun SettingsTab(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Profile section
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            shape = RoundedCornerShape(8.dp)
+        // Wrap the scrollable content in a Box with weight
+        Box(
+            modifier = Modifier.weight(1f)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                // Profile picture
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(40.dp)
+                // Profile section
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            // Profile picture
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer)
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Display user data with fallbacks
+                            val displayName = currentUser?.fullname.takeIf { !it.isNullOrBlank() } ?: "User Name"
+                            Text(
+                                text = displayName,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+
+                            Text(
+                                text = currentUser?.email ?: "user@tip.edu.ph",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+
+                            val displayStudentId = currentUser?.studentId.takeIf { !it.isNullOrBlank() } ?: "0000000"
+                            Text(
+                                text = "Student ID: $displayStudentId",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Button(
+                                onClick = { /* TODO: Edit profile */ },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Edit Profile")
+                            }
+                        }
+                    }
+                }
+
+                // Settings options
+                item {
+                    SettingsItem(
+                        icon = Icons.Default.ShoppingBag,
+                        title = "My Orders",
+                        onClick = { /* TODO: Navigate to orders */ }
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "Mark Andrei A. Condino",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-
-                Text(
-                    text = "mmacondino@tip.edu.ph",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-
-                Text(
-                    text = "Student ID: 2310841",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = { /* TODO: Edit profile */ },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                item {
+                    SettingsItem(
+                        icon = Icons.Default.Favorite,
+                        title = "Wishlist",
+                        onClick = { /* TODO: Navigate to wishlist */ }
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Edit Profile")
+                }
+
+                item {
+                    SettingsItem(
+                        icon = Icons.Default.CreditCard,
+                        title = "Payment Methods",
+                        onClick = { /* TODO: Navigate to payment methods */ }
+                    )
+                }
+
+                item {
+                    SettingsItem(
+                        icon = Icons.Default.LocationOn,
+                        title = "Address",
+                        onClick = { /* TODO: Navigate to address */ }
+                    )
+                }
+
+                item {
+                    SettingsItem(
+                        icon = Icons.Default.VerifiedUser,
+                        title = "Verify Account",
+                        onClick = { /* TODO: Navigate to verification */ }
+                    )
+                }
+
+                item {
+                    SettingsItem(
+                        icon = Icons.Default.Info,
+                        title = "About",
+                        onClick = onAboutClick
+                    )
                 }
             }
         }
 
-        // Settings options
-        SettingsItem(
-            icon = Icons.Default.ShoppingBag,
-            title = "My Orders",
-            onClick = { /* TODO: Navigate to orders */ }
-        )
-
-        SettingsItem(
-            icon = Icons.Default.Favorite,
-            title = "Wishlist",
-            onClick = { /* TODO: Navigate to wishlist */ }
-        )
-
-        SettingsItem(
-            icon = Icons.Default.CreditCard,
-            title = "Payment Methods",
-            onClick = { /* TODO: Navigate to payment methods */ }
-        )
-
-        SettingsItem(
-            icon = Icons.Default.LocationOn,
-            title = "Address",
-            onClick = { /* TODO: Navigate to address */ }
-        )
-
-        SettingsItem(
-            icon = Icons.Default.Info,
-            title = "About",
-            onClick = onAboutClick
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Logout button
+        // Logout button - outside of LazyColumn to ensure it's always visible
         Button(
             onClick = onLogout,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.error
             )
@@ -877,6 +970,7 @@ fun SettingsItem(
         thickness = 1.dp
     )
 }
+
 
 // Data classes
 data class Product(

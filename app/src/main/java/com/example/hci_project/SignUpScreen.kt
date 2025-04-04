@@ -1,13 +1,42 @@
 package com.example.hci_project
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -15,16 +44,16 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.hci_project.ui.theme.HCI_PROJECYTheme
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.hci_project.viewmodel.AuthViewModel
 
 @Composable
 fun SignUpScreen(
-    onSignUpSuccess: () -> Unit,
     onBackToLogin: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: AuthViewModel = hiltViewModel()
 ) {
     var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -42,6 +71,54 @@ fun SignUpScreen(
     var isConfirmPasswordError by remember { mutableStateOf(false) }
 
     var errorMessage by remember { mutableStateOf("") }
+    var showSuccessDialog by remember { mutableStateOf(false) }
+
+    val authState by viewModel.authState.collectAsState()
+
+    // Handle authentication state
+    LaunchedEffect(authState) {
+        when (authState) {
+            is AuthViewModel.AuthState.LoggedIn -> {
+                // Instead of immediately navigating, show success dialog
+                showSuccessDialog = true
+                // Reset auth state to prevent auto-navigation
+                viewModel.resetAuthState()
+            }
+            is AuthViewModel.AuthState.Error -> {
+                errorMessage = (authState as AuthViewModel.AuthState.Error).message
+
+                // Set the appropriate error flag based on the error message
+                when {
+                    errorMessage.contains("Student ID already exists") -> isStudentIdError = true
+                    errorMessage.contains("Email address is already in use") -> isEmailError = true
+                    errorMessage.contains("Password") -> isPasswordError = true
+                }
+            }
+            else -> {}
+        }
+    }
+
+    // Success Dialog
+    if (showSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showSuccessDialog = false
+                onBackToLogin()
+            },
+            title = { Text("Success!") },
+            text = { Text("Your account has been created successfully. You can now login.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showSuccessDialog = false
+                        onBackToLogin()
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -136,16 +213,17 @@ fun SignUpScreen(
                             .padding(bottom = 8.dp)
                     )
 
-                    // Student ID Field
+                    // Student ID Field - Only allow digits and limit to 7
                     OutlinedTextField(
                         value = studentId,
                         onValueChange = {
-                            if (it.length <= 7) { // Restrict to 7 characters
+                            // Only accept digits and limit to 7 characters
+                            if (it.all { char -> char.isDigit() } && it.length <= 7) {
                                 studentId = it
+                                isStudentIdError = false
                             }
-                            isStudentIdError = false
                         },
-                        label = { Text("Student ID") },
+                        label = { Text("Student ID (7 digits)") },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.AccountCircle,
@@ -241,6 +319,18 @@ fun SignUpScreen(
                     // Sign Up Button
                     Button(
                         onClick = {
+                            // Check if all fields are empty
+                            if (fullName.isEmpty() && email.isEmpty() && studentId.isEmpty() &&
+                                password.isEmpty() && confirmPassword.isEmpty()) {
+                                errorMessage = "All fields cannot be empty"
+                                isFullNameError = true
+                                isEmailError = true
+                                isStudentIdError = true
+                                isPasswordError = true
+                                isConfirmPasswordError = true
+                                return@Button
+                            }
+
                             when {
                                 fullName.isEmpty() -> {
                                     isFullNameError = true
@@ -258,9 +348,13 @@ fun SignUpScreen(
                                     isStudentIdError = true
                                     errorMessage = "Student ID cannot be empty"
                                 }
-                                studentId.length < 7 -> {
+                                studentId.length != 7 -> {
                                     isStudentIdError = true
-                                    errorMessage = "Student ID must be 7 digits"
+                                    errorMessage = "Student ID must be exactly 7 digits"
+                                }
+                                !studentId.all { it.isDigit() } -> {
+                                    isStudentIdError = true
+                                    errorMessage = "Student ID must contain only digits"
                                 }
                                 password.isEmpty() -> {
                                     isPasswordError = true
@@ -279,17 +373,24 @@ fun SignUpScreen(
                                     errorMessage = "Passwords do not match"
                                 }
                                 else -> {
-                                    // Perform sign up logic here
-                                    // For now, we'll just call the success callback
-                                    onSignUpSuccess()
+                                    // Call Firebase authentication
+                                    viewModel.signUp(email, password, fullName, studentId)
                                 }
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp)
+                            .height(50.dp),
+                        enabled = authState !is AuthViewModel.AuthState.Loading
                     ) {
-                        Text("Sign Up")
+                        if (authState is AuthViewModel.AuthState.Loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text("Sign Up")
+                        }
                     }
                 }
             }
@@ -314,20 +415,8 @@ fun SignUpScreen(
     }
 }
 
-// Email validation function
 private fun isValidEmail(email: String): Boolean {
     val emailRegex = "^[A-Za-z0-9+_.-]+@tip\\.edu\\.ph$".toRegex()
     return email.matches(emailRegex)
-}
-
-@Preview(showBackground = true)
-@Composable
-fun SignUpScreenPreview() {
-    HCI_PROJECYTheme {
-        SignUpScreen(
-            onSignUpSuccess = {},
-            onBackToLogin = {}
-        )
-    }
 }
 

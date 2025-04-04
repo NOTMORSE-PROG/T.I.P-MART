@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +28,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,16 +40,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.hci_project.ui.theme.HCI_PROJECYTheme
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.hci_project.viewmodel.AuthViewModel
 
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onSignUpClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: AuthViewModel = hiltViewModel()
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -53,6 +59,32 @@ fun LoginScreen(
     var isEmailError by remember { mutableStateOf(false) }
     var isPasswordError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    val authState by viewModel.authState.collectAsState()
+
+    // Handle authentication state
+    LaunchedEffect(authState) {
+        when (authState) {
+            is AuthViewModel.AuthState.LoggedIn -> {
+                onLoginSuccess()
+            }
+            is AuthViewModel.AuthState.Error -> {
+                val message = (authState as AuthViewModel.AuthState.Error).message
+                errorMessage = message
+
+                // Set appropriate error flags based on the error message
+                when {
+                    message.contains("No account found") -> isEmailError = true
+                    message.contains("Incorrect password") -> isPasswordError = true
+                    else -> {
+                        isEmailError = true
+                        isPasswordError = true
+                    }
+                }
+            }
+            else -> {}
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -145,7 +177,7 @@ fun LoginScreen(
                                 )
                             }
                         },
-                        visualTransformation = if (isPasswordVisible) PasswordVisualTransformation() else PasswordVisualTransformation(),
+                        visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         isError = isPasswordError,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Password,
@@ -169,6 +201,14 @@ fun LoginScreen(
                     // Login Button
                     Button(
                         onClick = {
+                            // Check if both fields are empty
+                            if (email.isEmpty() && password.isEmpty()) {
+                                isEmailError = true
+                                isPasswordError = true
+                                errorMessage = "Email and password cannot be empty"
+                                return@Button
+                            }
+
                             when {
                                 email.isEmpty() -> {
                                     isEmailError = true
@@ -183,21 +223,33 @@ fun LoginScreen(
                                     errorMessage = "Please enter a valid TIP email (@tip.edu.ph)"
                                 }
                                 else -> {
-                                    // Call the login success callback to navigate to dashboard
-                                    onLoginSuccess()
+                                    // Call Firebase authentication
+                                    viewModel.signIn(email, password)
                                 }
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp)
+                            .height(50.dp),
+                        enabled = authState !is AuthViewModel.AuthState.Loading
                     ) {
-                        Text("Login")
+                        if (authState is AuthViewModel.AuthState.Loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text("Login")
+                        }
                     }
 
                     // For testing - Skip login button
                     TextButton(
-                        onClick = onLoginSuccess,
+                        onClick = {
+                            // Set the auth state to LoggedIn first, then call onLoginSuccess
+                            viewModel._authState.value = AuthViewModel.AuthState.LoggedIn
+                            onLoginSuccess()
+                        },
                         modifier = Modifier.padding(top = 8.dp)
                     ) {
                         Text("Skip Login (For Testing)")
@@ -233,20 +285,8 @@ fun LoginScreen(
     }
 }
 
-// Email validation function
 private fun isValidEmail(email: String): Boolean {
     val emailRegex = "^[A-Za-z0-9+_.-]+@tip\\.edu\\.ph$".toRegex()
     return email.matches(emailRegex)
-}
-
-@Preview(showBackground = true)
-@Composable
-fun LoginScreenPreview() {
-    HCI_PROJECYTheme {
-        LoginScreen(
-            onLoginSuccess = {},
-            onSignUpClick = {}
-        )
-    }
 }
 
