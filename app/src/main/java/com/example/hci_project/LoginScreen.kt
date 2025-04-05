@@ -70,15 +70,21 @@ fun LoginScreen(
             }
             is AuthViewModel.AuthState.Error -> {
                 val message = (authState as AuthViewModel.AuthState.Error).message
-                errorMessage = message
 
                 // Set appropriate error flags based on the error message
                 when {
-                    message.contains("No account found") -> isEmailError = true
-                    message.contains("Incorrect password") -> isPasswordError = true
+                    message.contains("User not found") -> {
+                        isEmailError = true
+                        errorMessage = "User not found"
+                    }
+                    message.contains("Incorrect password") -> {
+                        isPasswordError = true
+                        errorMessage = "Incorrect password"
+                    }
                     else -> {
                         isEmailError = true
                         isPasswordError = true
+                        errorMessage = "Login failed. Please try again."
                     }
                 }
             }

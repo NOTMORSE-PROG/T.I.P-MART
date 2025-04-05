@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,7 +29,21 @@ class AuthRepository @Inject constructor() {
         }
     }
 
-    private suspend fun checkStudentIdExists(studentId: String): Boolean {
+    // Function to hash passwords
+    private fun hashPassword(password: String): String {
+        try {
+            val bytes = password.toByteArray()
+            val md = MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(bytes)
+            return digest.fold("") { str, it -> str + "%02x".format(it) }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error hashing password: ${e.message}", e)
+            // Return a placeholder if hashing fails
+            return "HASH_ERROR"
+        }
+    }
+
+    suspend fun checkStudentIdExists(studentId: String): Boolean {
         return try {
             Log.d("AuthRepository", "Checking if student ID exists: $studentId")
             val query = usersCollection.whereEqualTo("studentId", studentId).get().await()
@@ -54,9 +69,9 @@ class AuthRepository @Inject constructor() {
         }
     }
 
-    suspend fun signUp(email: String, password: String, fullname: String, studentId: String): Result<FirebaseUser> {
+    suspend fun signUp(email: String, password: String, fullname: String, studentId: String, campus: String): Result<FirebaseUser> {
         return try {
-            Log.d("AuthRepository", "Attempting to sign up user: $email with fullname: $fullname, studentId: $studentId")
+            Log.d("AuthRepository", "Attempting to sign up user: $email with fullname: $fullname, studentId: $studentId, campus: $campus")
 
             // Check if student ID already exists
             if (checkStudentIdExists(studentId)) {
@@ -73,11 +88,17 @@ class AuthRepository @Inject constructor() {
 
             if (firebaseUser != null) {
                 Log.d("AuthRepository", "User created successfully: ${firebaseUser.uid}")
+
+                // Hash the password before storing
+                val hashedPassword = hashPassword(password)
+
                 // Create user document in Firestore with required fields
                 val user = hashMapOf(
                     "email" to email,
                     "fullname" to fullname,
                     "studentId" to studentId,
+                    "campus" to campus,
+                    "hashedPassword" to hashedPassword,  // Store hashed password
                     "userId" to firebaseUser.uid,
                     "createdAt" to com.google.firebase.Timestamp.now(),
                     "lastLogin" to com.google.firebase.Timestamp.now()
@@ -122,6 +143,15 @@ class AuthRepository @Inject constructor() {
     suspend fun signIn(email: String, password: String): Result<FirebaseUser> {
         return try {
             Log.d("AuthRepository", "Attempting to sign in user: $email")
+
+            // First check if the user exists in Firestore
+            val userExists = checkEmailExists(email)
+            if (!userExists) {
+                Log.e("AuthRepository", "No account found with email: $email")
+                return Result.failure(Exception("User not found"))
+            }
+
+            // If user exists, try to authenticate
             val authResult = firebaseAuth.signInWithEmailAndPassword(email, password).await()
             val firebaseUser = authResult.user
 
@@ -146,13 +176,16 @@ class AuthRepository @Inject constructor() {
             }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Error in signIn: ${e.message}", e)
-            // Handle Firebase specific error messages
+
+            // Improved error handling to distinguish between different error types
             val errorMessage = when {
-                e.message?.contains("no user record") == true ->
-                    "No account found with this email"
-                e.message?.contains("password is invalid") == true ->
+                e.message?.contains("no user record") == true ||
+                        e.message?.contains("user may have been deleted") == true ->
+                    "User not found"
+                e.message?.contains("password is invalid") == true ||
+                        e.message?.contains("credential") == true ->
                     "Incorrect password"
-                else -> e.message ?: "Sign in failed"
+                else -> "Sign in failed"
             }
             Result.failure(Exception(errorMessage))
         }
@@ -179,6 +212,8 @@ class AuthRepository @Inject constructor() {
                         email = userData?.get("email") as? String ?: "",
                         fullname = userData?.get("fullname") as? String ?: "",
                         studentId = userData?.get("studentId") as? String ?: "",
+                        campus = userData?.get("campus") as? String ?: "",
+                        hashedPassword = userData?.get("hashedPassword") as? String ?: "",
                         userId = userId,
                         documentId = email  // Store the email as document ID
                     )
@@ -199,6 +234,8 @@ class AuthRepository @Inject constructor() {
                             email = userData?.get("email") as? String ?: "",
                             fullname = userData?.get("fullname") as? String ?: "",
                             studentId = userData?.get("studentId") as? String ?: "",
+                            campus = userData?.get("campus") as? String ?: "",
+                            hashedPassword = userData?.get("hashedPassword") as? String ?: "",
                             userId = userId,
                             documentId = doc.id
                         )
@@ -232,6 +269,89 @@ class AuthRepository @Inject constructor() {
                 email = firebaseAuth.currentUser?.email ?: ""
             )
             Result.success(minimalUser)
+        }
+    }
+
+    suspend fun deleteAccount(): Result<Unit> {
+        return try {
+            val currentUser = firebaseAuth.currentUser
+            if (currentUser != null) {
+                val email = currentUser.email
+                val userId = currentUser.uid
+
+                Log.d("AuthRepository", "Attempting to delete account for user: $email, $userId")
+
+                // First, ensure we delete all user documents from Firestore
+                var firestoreDeleteSuccess = false
+
+                // Try to delete by email first (our primary document ID)
+                if (email != null) {
+                    try {
+                        usersCollection.document(email).delete().await()
+                        Log.d("AuthRepository", "User document deleted from Firestore by email")
+                        firestoreDeleteSuccess = true
+                    } catch (e: Exception) {
+                        Log.e("AuthRepository", "Error deleting user document by email: ${e.message}", e)
+                        // We'll try the userId method next
+                    }
+                }
+
+                // If email deletion failed or email was null, try finding by userId
+                if (!firestoreDeleteSuccess) {
+                    try {
+                        val querySnapshot = usersCollection.whereEqualTo("userId", userId).get().await()
+                        if (!querySnapshot.isEmpty) {
+                            for (doc in querySnapshot.documents) {
+                                doc.reference.delete().await()
+                                Log.d("AuthRepository", "User document deleted from Firestore by userId: ${doc.id}")
+                            }
+                            firestoreDeleteSuccess = true
+                        }
+                    } catch (e: Exception) {
+                        Log.e("AuthRepository", "Error finding/deleting user document by userId: ${e.message}", e)
+                    }
+                }
+
+                // If we still haven't found the document, try one last query with all user fields
+                if (!firestoreDeleteSuccess) {
+                    try {
+                        // Try to find any documents that might be related to this user
+                        val queries = listOf(
+                            usersCollection.whereEqualTo("email", email ?: "").get(),
+                            usersCollection.whereEqualTo("userId", userId).get()
+                        )
+
+                        queries.forEach { queryTask ->
+                            val querySnapshot = queryTask.await()
+                            if (!querySnapshot.isEmpty) {
+                                for (doc in querySnapshot.documents) {
+                                    doc.reference.delete().await()
+                                    Log.d("AuthRepository", "User document deleted from Firestore by additional query: ${doc.id}")
+                                }
+                                firestoreDeleteSuccess = true
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("AuthRepository", "Error in additional document deletion queries: ${e.message}", e)
+                    }
+                }
+
+                if (!firestoreDeleteSuccess) {
+                    Log.w("AuthRepository", "Could not find and delete user documents in Firestore")
+                }
+
+                // Finally delete the Firebase Auth account
+                currentUser.delete().await()
+                Log.d("AuthRepository", "User account deleted from Firebase Auth")
+
+                Result.success(Unit)
+            } else {
+                Log.e("AuthRepository", "No current user to delete")
+                Result.failure(Exception("No user is currently signed in"))
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error in deleteAccount: ${e.message}", e)
+            Result.failure(e)
         }
     }
 

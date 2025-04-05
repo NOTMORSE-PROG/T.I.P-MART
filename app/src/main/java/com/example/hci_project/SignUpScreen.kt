@@ -1,5 +1,6 @@
 package com.example.hci_project
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
@@ -23,6 +27,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +66,8 @@ fun SignUpScreen(
     var studentId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var selectedCampus by remember { mutableStateOf("") }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
 
     var isPasswordVisible by remember { mutableStateOf(false) }
     var isConfirmPasswordVisible by remember { mutableStateOf(false) }
@@ -69,17 +77,20 @@ fun SignUpScreen(
     var isStudentIdError by remember { mutableStateOf(false) }
     var isPasswordError by remember { mutableStateOf(false) }
     var isConfirmPasswordError by remember { mutableStateOf(false) }
+    var isCampusError by remember { mutableStateOf(false) }
 
     var errorMessage by remember { mutableStateOf("") }
     var showSuccessDialog by remember { mutableStateOf(false) }
+
+    val campusOptions = listOf("Manila", "Quezon City")
 
     val authState by viewModel.authState.collectAsState()
 
     // Handle authentication state
     LaunchedEffect(authState) {
         when (authState) {
-            is AuthViewModel.AuthState.LoggedIn -> {
-                // Instead of immediately navigating, show success dialog
+            is AuthViewModel.AuthState.SignUpSuccess -> {
+                // Show success dialog
                 showSuccessDialog = true
                 // Reset auth state to prevent auto-navigation
                 viewModel.resetAuthState()
@@ -240,6 +251,58 @@ fun SignUpScreen(
                             .padding(bottom = 8.dp)
                     )
 
+                    // Campus Dropdown - Alternative implementation
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = selectedCampus,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("T.I.P Campus") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = "Campus Icon"
+                                )
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { isDropdownExpanded = !isDropdownExpanded }) {
+                                    Icon(
+                                        imageVector = if (isDropdownExpanded)
+                                            Icons.Default.KeyboardArrowUp
+                                        else
+                                            Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Toggle Dropdown"
+                                    )
+                                }
+                            },
+                            isError = isCampusError,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isDropdownExpanded = !isDropdownExpanded }
+                        )
+
+                        DropdownMenu(
+                            expanded = isDropdownExpanded,
+                            onDismissRequest = { isDropdownExpanded = false },
+                            modifier = Modifier.fillMaxWidth(0.9f)
+                        ) {
+                            campusOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option) },
+                                    onClick = {
+                                        selectedCampus = option
+                                        isDropdownExpanded = false
+                                        isCampusError = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     // Password Field
                     OutlinedTextField(
                         value = password,
@@ -321,13 +384,14 @@ fun SignUpScreen(
                         onClick = {
                             // Check if all fields are empty
                             if (fullName.isEmpty() && email.isEmpty() && studentId.isEmpty() &&
-                                password.isEmpty() && confirmPassword.isEmpty()) {
+                                password.isEmpty() && confirmPassword.isEmpty() && selectedCampus.isEmpty()) {
                                 errorMessage = "All fields cannot be empty"
                                 isFullNameError = true
                                 isEmailError = true
                                 isStudentIdError = true
                                 isPasswordError = true
                                 isConfirmPasswordError = true
+                                isCampusError = true
                                 return@Button
                             }
 
@@ -356,6 +420,10 @@ fun SignUpScreen(
                                     isStudentIdError = true
                                     errorMessage = "Student ID must contain only digits"
                                 }
+                                selectedCampus.isEmpty() -> {
+                                    isCampusError = true
+                                    errorMessage = "Please select your campus"
+                                }
                                 password.isEmpty() -> {
                                     isPasswordError = true
                                     errorMessage = "Password cannot be empty"
@@ -374,7 +442,7 @@ fun SignUpScreen(
                                 }
                                 else -> {
                                     // Call Firebase authentication
-                                    viewModel.signUp(email, password, fullName, studentId)
+                                    viewModel.signUp(email, password, fullName, studentId, selectedCampus)
                                 }
                             }
                         },

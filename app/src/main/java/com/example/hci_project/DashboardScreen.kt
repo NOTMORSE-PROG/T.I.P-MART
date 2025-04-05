@@ -4,69 +4,24 @@ import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Message
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,6 +37,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.hci_project.ui.theme.HCI_PROJECYTheme
 import com.example.hci_project.viewmodel.AuthViewModel
+import kotlinx.coroutines.launch
+import com.example.hci_project.utils.toTitleCase
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,6 +48,10 @@ fun DashboardScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showAboutScreen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     // Sample data
     val categories = listOf(
@@ -104,7 +65,8 @@ fun DashboardScreen(
             price = "₱450",
             seller = "John Doe",
             imageRes = R.drawable.ic_launcher_foreground,
-            category = "Electronics"
+            category = "Electronics",
+            campus = "Manila"
         ),
         Product(
             id = 2,
@@ -112,7 +74,8 @@ fun DashboardScreen(
             price = "₱350",
             seller = "Jane Smith",
             imageRes = R.drawable.ic_launcher_foreground,
-            category = "Books"
+            category = "Books",
+            campus = "Quezon City"
         ),
         Product(
             id = 3,
@@ -120,7 +83,8 @@ fun DashboardScreen(
             price = "₱800",
             seller = "Mike Johnson",
             imageRes = R.drawable.ic_launcher_foreground,
-            category = "Clothing"
+            category = "Clothing",
+            campus = "Manila"
         ),
         Product(
             id = 4,
@@ -128,7 +92,8 @@ fun DashboardScreen(
             price = "₱120",
             seller = "Sarah Lee",
             imageRes = R.drawable.ic_launcher_foreground,
-            category = "Food"
+            category = "Food",
+            campus = "Quezon City"
         ),
         Product(
             id = 5,
@@ -136,7 +101,8 @@ fun DashboardScreen(
             price = "₱250",
             seller = "Alex Chen",
             imageRes = R.drawable.ic_launcher_foreground,
-            category = "Services"
+            category = "Services",
+            campus = "Manila"
         ),
         Product(
             id = 6,
@@ -144,7 +110,8 @@ fun DashboardScreen(
             price = "₱350",
             seller = "David Wilson",
             imageRes = R.drawable.ic_launcher_foreground,
-            category = "Electronics"
+            category = "Electronics",
+            campus = "Quezon City"
         ),
         Product(
             id = 7,
@@ -152,7 +119,8 @@ fun DashboardScreen(
             price = "₱75",
             seller = "Emma Garcia",
             imageRes = R.drawable.ic_launcher_foreground,
-            category = "Accessories"
+            category = "Accessories",
+            campus = "Manila"
         ),
         Product(
             id = 8,
@@ -160,102 +128,275 @@ fun DashboardScreen(
             price = "₱120",
             seller = "Carlos Rodriguez",
             imageRes = R.drawable.ic_launcher_foreground,
-            category = "School Supplies"
+            category = "School Supplies",
+            campus = "Quezon City"
         )
     )
 
     var selectedCategory by remember { mutableStateOf("All") }
-    val filteredProducts = if (selectedCategory == "All") {
-        products
-    } else {
-        products.filter { it.category == selectedCategory }
+    var selectedCampus by remember { mutableStateOf("All") }
+
+    // Filter products based on category, campus, and search query
+    val filteredProducts = products.filter { product ->
+        val matchesCategory = selectedCategory == "All" || product.category == selectedCategory
+        val matchesCampus = selectedCampus == "All" || product.campus == selectedCampus
+        val matchesSearch = searchQuery.isEmpty() ||
+                product.name.contains(searchQuery, ignoreCase = true) ||
+                product.seller.contains(searchQuery, ignoreCase = true) ||
+                product.category.contains(searchQuery, ignoreCase = true)
+
+        matchesCategory && matchesCampus && matchesSearch
     }
 
     if (showAboutScreen) {
         AboutScreen(onBackClick = { showAboutScreen = false })
     } else {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
+        // Drawer layout
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet(
+                    modifier = Modifier.width(300.dp)
+                ) {
+                    // Drawer header
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primary)
+                            .padding(vertical = 24.dp, horizontal = 16.dp)
+                    ) {
                         Text(
-                            text = "T.I.P MART",
-                            fontWeight = FontWeight.Bold
+                            text = "Filter Products",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp
                         )
-                    },
-                    actions = {
-                        IconButton(onClick = { /* TODO: Search functionality */ }) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search"
-                            )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Campus Filter
+                    Text(
+                        text = "Campus",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    ) {
+                        listOf("All", "Manila", "Quezon City").forEach { campus ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedCampus = campus
+                                        scope.launch { drawerState.close() }
+                                    }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = campus == selectedCampus,
+                                    onClick = {
+                                        selectedCampus = campus
+                                        scope.launch { drawerState.close() }
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(text = campus)
+                            }
                         }
-                        IconButton(onClick = { /* TODO: Cart functionality */ }) {
-                            Icon(
-                                imageVector = Icons.Default.ShoppingCart,
-                                contentDescription = "Cart"
-                            )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    // Categories
+                    Text(
+                        text = "Categories",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    ) {
+                        items(categories) { category ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedCategory = category
+                                        scope.launch { drawerState.close() }
+                                    }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = category == selectedCategory,
+                                    onClick = {
+                                        selectedCategory = category
+                                        scope.launch { drawerState.close() }
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(text = category)
+                            }
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                        actionIconContentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                )
-            },
-            bottomBar = {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Default.AddCircle, contentDescription = "Sell") },
-                        label = { Text("Sell") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = "Messages") },
-                        label = { Text("Messages") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
-                        icon = { Icon(Icons.Default.Notifications, contentDescription = "Notice") },
-                        label = { Text("Notice") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == 4,
-                        onClick = { selectedTab = 4 },
-                        icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") }
-                    )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Apply button
+                    Button(
+                        onClick = { scope.launch { drawerState.close() } },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Text("Apply Filters")
+                    }
                 }
             }
-        ) { paddingValues ->
-            when (selectedTab) {
-                0 -> HomeTab(
-                    categories = categories,
-                    products = filteredProducts,
-                    selectedCategory = selectedCategory,
-                    onCategorySelected = { selectedCategory = it },
-                    modifier = Modifier.padding(paddingValues)
-                )
-                1 -> SellTab(modifier = Modifier.padding(paddingValues))
-                2 -> MessagesTab(modifier = Modifier.padding(paddingValues))
-                3 -> NoticeTab(modifier = Modifier.padding(paddingValues))
-                4 -> SettingsTab(
-                    onLogout = onLogout,
-                    onAboutClick = { showAboutScreen = true },
-                    modifier = Modifier.padding(paddingValues),
-                    viewModel = viewModel
-                )
+        ) {
+            Scaffold(
+                topBar = {
+                    if (isSearchActive) {
+                        // Search TopBar
+                        TopAppBar(
+                            title = {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    placeholder = { Text("Search products...") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent
+                                    )
+                                )
+                            },
+                            navigationIcon = {
+                                IconButton(onClick = {
+                                    isSearchActive = false
+                                    searchQuery = ""
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back"
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                                navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                    } else {
+                        // Regular TopBar
+                        TopAppBar(
+                            title = {
+                                Text(
+                                    text = "T.I.P MART",
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            navigationIcon = {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Menu,
+                                        contentDescription = "Menu"
+                                    )
+                                }
+                            },
+                            actions = {
+                                IconButton(onClick = { isSearchActive = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "Search"
+                                    )
+                                }
+                                IconButton(onClick = { /* TODO: Cart functionality */ }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ShoppingCart,
+                                        contentDescription = "Cart"
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                                navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
+                                actionIconContentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                    }
+                },
+                bottomBar = {
+                    NavigationBar {
+                        NavigationBarItem(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                            label = { Text("Home") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            icon = { Icon(Icons.Default.AddCircle, contentDescription = "Sell") },
+                            label = { Text("Sell") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            icon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = "Messages") },
+                            label = { Text("Messages") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 3,
+                            onClick = { selectedTab = 3 },
+                            icon = { Icon(Icons.Default.Notifications, contentDescription = "Notice") },
+                            label = { Text("Notice") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == 4,
+                            onClick = { selectedTab = 4 },
+                            icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                            label = { Text("Settings") }
+                        )
+                    }
+                }
+            ) { paddingValues ->
+                when (selectedTab) {
+                    0 -> HomeTab(
+                        products = filteredProducts,
+                        selectedCategory = selectedCategory,
+                        selectedCampus = selectedCampus,
+                        searchQuery = searchQuery,
+                        onFilterClick = { scope.launch { drawerState.open() } },
+                        onCategoryCleared = { selectedCategory = "All" },
+                        onCampusCleared = { selectedCampus = "All" },
+                        modifier = Modifier.padding(paddingValues)
+                    )
+                    1 -> SellTab(modifier = Modifier.padding(paddingValues))
+                    2 -> MessagesTab(modifier = Modifier.padding(paddingValues))
+                    3 -> NoticeTab(modifier = Modifier.padding(paddingValues))
+                    4 -> SettingsTab(
+                        onLogout = onLogout,
+                        onAboutClick = { showAboutScreen = true },
+                        onDeleteAccount = {
+                            viewModel.deleteAccount {
+                                onLogout()
+                            }
+                        },
+                        modifier = Modifier.padding(paddingValues),
+                        viewModel = viewModel
+                    )
+                }
             }
         }
     }
@@ -263,10 +404,13 @@ fun DashboardScreen(
 
 @Composable
 fun HomeTab(
-    categories: List<String>,
     products: List<Product>,
     selectedCategory: String,
-    onCategorySelected: (String) -> Unit,
+    selectedCampus: String,
+    searchQuery: String,
+    onFilterClick: () -> Unit,
+    onCategoryCleared: () -> Unit,
+    onCampusCleared: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -274,26 +418,87 @@ fun HomeTab(
             .fillMaxSize()
             .padding(horizontal = 16.dp)
     ) {
-        // Categories
-        Text(
-            text = "Categories",
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-        )
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 8.dp),
-            modifier = Modifier.fillMaxWidth()
+        // Active filters section
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            items(categories) { category ->
-                CategoryChip(
-                    category = category,
-                    selected = category == selectedCategory,
-                    onSelected = { onCategorySelected(category) }
+            Text(
+                text = "Active Filters:",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+
+            // Show active filters as chips
+            if (selectedCategory != "All" || selectedCampus != "All") {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    if (selectedCategory != "All") {
+                        FilterChip(
+                            selected = true,
+                            onClick = { /* Do nothing on chip body click */ },
+                            label = { Text("Category: $selectedCategory") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear category filter",
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        // Clear category filter without opening sidebar
+                                        onCategoryCleared()
+                                    }
+                                )
+                            }
+                        )
+                    }
+
+                    if (selectedCampus != "All") {
+                        FilterChip(
+                            selected = true,
+                            onClick = { /* Do nothing on chip body click */ },
+                            label = { Text("Campus: $selectedCampus") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear campus filter",
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        // Clear campus filter without opening sidebar
+                                        onCampusCleared()
+                                    }
+                                )
+                            }
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = "None",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(start = 4.dp)
                 )
             }
+        }
+
+        // Search Results Label (only show when searching)
+        if (searchQuery.isNotEmpty()) {
+            Text(
+                text = "Search Results for \"$searchQuery\"",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+            )
         }
 
         // Products
@@ -311,11 +516,41 @@ fun HomeTab(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "No products found in this category",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    textAlign = TextAlign.Center
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SearchOff,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = if (searchQuery.isNotEmpty())
+                            "No products found matching \"$searchQuery\""
+                        else
+                            "No products found with the selected filters",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = onFilterClick
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FilterAlt,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Change Filters")
+                    }
+                }
             }
         } else {
             LazyVerticalGrid(
@@ -334,27 +569,6 @@ fun HomeTab(
 }
 
 @Composable
-fun CategoryChip(
-    category: String,
-    selected: Boolean,
-    onSelected: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier.clickable { onSelected() }
-    ) {
-        Text(
-            text = category,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-        )
-    }
-}
-
-@Composable
 fun ProductCard(
     product: Product,
     modifier: Modifier = Modifier
@@ -362,7 +576,7 @@ fun ProductCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .height(220.dp)
+            .height(240.dp)  // Increased height to accommodate campus info
             .clickable { /* TODO: Product detail */ },
         shape = RoundedCornerShape(8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -380,6 +594,21 @@ fun ProductCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
+
+                // Campus Badge
+                Surface(
+                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(bottomEnd = 8.dp),
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    Text(
+                        text = product.campus,
+                        color = MaterialTheme.colorScheme.onSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
 
             // Product Info
@@ -403,6 +632,13 @@ fun ProductCard(
                 )
                 Text(
                     text = "Seller: ${product.seller}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "Category: ${product.category}",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     maxLines = 1,
@@ -723,6 +959,7 @@ fun NotificationItem(
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary)
                 )
+
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
@@ -754,14 +991,46 @@ fun NotificationItem(
 fun SettingsTab(
     onLogout: () -> Unit,
     onAboutClick: () -> Unit,
+    onDeleteAccount: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val currentUser by viewModel.currentUser.collectAsState()
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    val authState by viewModel.authState.collectAsState()
 
     // Debug log to check what user data we have
     LaunchedEffect(currentUser) {
         Log.d("SettingsTab", "Current user data: ${currentUser?.toString()}")
+    }
+
+    // Delete Account Confirmation Dialog
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Delete Account") },
+            text = { Text("Are you sure you want to delete your account? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDeleteAccount()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showDeleteConfirmDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Column(
@@ -776,14 +1045,12 @@ fun SettingsTab(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Wrap the scrollable content in a Box with weight
         Box(
             modifier = Modifier.weight(1f)
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Profile section
                 item {
                     Card(
                         modifier = Modifier
@@ -816,8 +1083,11 @@ fun SettingsTab(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // Display user data with fallbacks
-                            val displayName = currentUser?.fullname.takeIf { !it.isNullOrBlank() } ?: "User Name"
+                            // ✅ Use title-cased full name
+                            val displayName = currentUser?.fullname
+                                ?.toTitleCase()
+                                .takeIf { !it.isNullOrBlank() } ?: "User Name"
+
                             Text(
                                 text = displayName,
                                 fontWeight = FontWeight.Bold,
@@ -829,9 +1099,17 @@ fun SettingsTab(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
 
-                            val displayStudentId = currentUser?.studentId.takeIf { !it.isNullOrBlank() } ?: "0000000"
+                            val displayStudentId =
+                                currentUser?.studentId.takeIf { !it.isNullOrBlank() } ?: "0000000"
                             Text(
                                 text = "Student ID: $displayStudentId",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+
+                            val displayCampus = currentUser?.campus.takeIf { !it.isNullOrBlank() }
+                                ?: "Not specified"
+                            Text(
+                                text = "Campus: $displayCampus",
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
 
@@ -901,7 +1179,40 @@ fun SettingsTab(
                         onClick = onAboutClick
                     )
                 }
+
+                // Delete Account Option
+                item {
+                    SettingsItem(
+                        icon = Icons.Default.Delete,
+                        title = "Delete Account",
+                        onClick = { showDeleteConfirmDialog = true }
+                    )
+                }
             }
+        }
+
+        // Loading indicator during account deletion
+        if (authState is AuthViewModel.AuthState.Loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+
+        // Error message
+        if (authState is AuthViewModel.AuthState.Error) {
+            Text(
+                text = (authState as AuthViewModel.AuthState.Error).message,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                textAlign = TextAlign.Center
+            )
         }
 
         // Logout button - outside of LazyColumn to ensure it's always visible
@@ -971,7 +1282,6 @@ fun SettingsItem(
     )
 }
 
-
 // Data classes
 data class Product(
     val id: Int,
@@ -979,7 +1289,8 @@ data class Product(
     val price: String,
     val seller: String,
     val imageRes: Int,
-    val category: String
+    val category: String,
+    val campus: String  // Added campus field
 )
 
 data class Notification(

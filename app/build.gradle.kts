@@ -46,17 +46,22 @@ dependencies {
     // Firebase
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
-    implementation(libs.firebase.auth.ktx)
-    implementation(libs.firebase.firestore.ktx)
+    implementation(libs.google.firebase.auth.ktx)
+    implementation(libs.google.firebase.firestore.ktx)
+    implementation(libs.google.firebase.storage.ktx)  // Added for profile picture storage
 
     // Hilt for dependency injection
-    implementation(libs.hilt.android)
+    implementation(libs.hilt.android.v248)
+    implementation(libs.volley)
     kapt(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
+
+    // Coil for image loading
+    implementation(libs.coil.compose)
 
     // Existing dependencies
     implementation(libs.androidx.material.icons.extended)

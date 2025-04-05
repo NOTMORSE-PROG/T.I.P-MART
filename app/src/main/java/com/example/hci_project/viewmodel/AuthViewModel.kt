@@ -39,31 +39,34 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun signUp(email: String, password: String, fullname: String, studentId: String) {
+    fun signUp(email: String, password: String, fullname: String, studentId: String, campus: String) {
         viewModelScope.launch {
-            Log.d("AuthViewModel", "Attempting to sign up: $email with fullname: $fullname, studentId: $studentId")
+            Log.d("AuthViewModel", "Attempting to sign up: $email with fullname: $fullname, studentId: $studentId, campus: $campus")
             _authState.value = AuthState.Loading
 
             try {
-                val result = authRepository.signUp(email, password, fullname, studentId)
+                val result = authRepository.signUp(email, password, fullname, studentId, campus)
 
                 result.fold(
-                    onSuccess = {
-                        Log.d("AuthViewModel", "Sign up successful: ${it.uid}")
+                    onSuccess = { user ->
+                        Log.d("AuthViewModel", "Sign up successful: ${user.uid}")
 
                         // Create a user object directly to ensure we have the data
                         _currentUser.value = User(
                             email = email,
                             fullname = fullname,
                             studentId = studentId,
-                            userId = it.uid
+                            campus = campus,
+                            userId = user.uid,
+                            documentId = email
                         )
 
-                        _authState.value = AuthState.LoggedIn
+                        // Don't set to LoggedIn, just set to a new SignUpSuccess state
+                        _authState.value = AuthState.SignUpSuccess
                     },
-                    onFailure = {
-                        Log.e("AuthViewModel", "Sign up failed: ${it.message}")
-                        _authState.value = AuthState.Error(it.message ?: "Sign up failed")
+                    onFailure = { error ->
+                        Log.e("AuthViewModel", "Sign up failed: ${error.message}")
+                        _authState.value = AuthState.Error(error.message ?: "Sign up failed")
                     }
                 )
             } catch (e: Exception) {
@@ -82,14 +85,14 @@ class AuthViewModel @Inject constructor(
                 val result = authRepository.signIn(email, password)
 
                 result.fold(
-                    onSuccess = {
-                        Log.d("AuthViewModel", "Sign in successful: ${it.uid}")
+                    onSuccess = { user ->
+                        Log.d("AuthViewModel", "Sign in successful: ${user.uid}")
                         _authState.value = AuthState.LoggedIn
-                        fetchUserData(it.uid)
+                        fetchUserData(user.uid)
                     },
-                    onFailure = {
-                        Log.e("AuthViewModel", "Sign in failed: ${it.message}")
-                        _authState.value = AuthState.Error(it.message ?: "Sign in failed")
+                    onFailure = { error ->
+                        Log.e("AuthViewModel", "Sign in failed: ${error.message}")
+                        _authState.value = AuthState.Error(error.message ?: "Sign in failed")
                     }
                 )
             } catch (e: Exception) {
@@ -110,8 +113,8 @@ class AuthViewModel @Inject constructor(
                         Log.d("AuthViewModel", "User data fetched successfully: $user")
                         _currentUser.value = user
                     },
-                    onFailure = {
-                        Log.e("AuthViewModel", "Failed to fetch user data: ${it.message}")
+                    onFailure = { error ->
+                        Log.e("AuthViewModel", "Failed to fetch user data: ${error.message}")
                         // Create a minimal user with just the ID if Firestore data isn't found
                         _currentUser.value = User(
                             userId = userId,
@@ -126,6 +129,33 @@ class AuthViewModel @Inject constructor(
                     userId = userId,
                     email = authRepository.getCurrentUser()?.email ?: ""
                 )
+            }
+        }
+    }
+
+    fun deleteAccount(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            Log.d("AuthViewModel", "Attempting to delete account")
+            _authState.value = AuthState.Loading
+
+            try {
+                val result = authRepository.deleteAccount()
+
+                result.fold(
+                    onSuccess = {
+                        Log.d("AuthViewModel", "Account deleted successfully")
+                        _currentUser.value = null
+                        _authState.value = AuthState.Idle
+                        onSuccess()
+                    },
+                    onFailure = { error ->
+                        Log.e("AuthViewModel", "Account deletion failed: ${error.message}")
+                        _authState.value = AuthState.Error(error.message ?: "Account deletion failed")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("AuthViewModel", "Exception during account deletion: ${e.message}", e)
+                _authState.value = AuthState.Error(e.message ?: "Account deletion failed")
             }
         }
     }
@@ -146,6 +176,7 @@ class AuthViewModel @Inject constructor(
         data object Idle : AuthState()
         data object Loading : AuthState()
         data object LoggedIn : AuthState()
+        data object SignUpSuccess : AuthState()
         data class Error(val message: String) : AuthState()
     }
 }
