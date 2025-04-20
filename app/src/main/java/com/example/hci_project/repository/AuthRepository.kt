@@ -1,10 +1,14 @@
 package com.example.hci_project.repository
 
+import android.net.Uri
 import android.util.Log
 import com.example.hci_project.model.User
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -14,6 +18,7 @@ import javax.inject.Singleton
 class AuthRepository @Inject constructor() {
     private val firebaseAuth: FirebaseAuth
     private val firestore: FirebaseFirestore
+    private val storage: FirebaseStorage
     private val usersCollection: com.google.firebase.firestore.CollectionReference
 
     init {
@@ -21,6 +26,7 @@ class AuthRepository @Inject constructor() {
             // Initialize Firebase components
             firebaseAuth = FirebaseAuth.getInstance()
             firestore = FirebaseFirestore.getInstance()
+            storage = FirebaseStorage.getInstance()
             usersCollection = firestore.collection("users")
             Log.d("AuthRepository", "Repository initialized successfully")
         } catch (e: Exception) {
@@ -43,7 +49,7 @@ class AuthRepository @Inject constructor() {
         }
     }
 
-    suspend fun checkStudentIdExists(studentId: String): Boolean {
+    private suspend fun checkStudentIdExists(studentId: String): Boolean {
         return try {
             Log.d("AuthRepository", "Checking if student ID exists: $studentId")
             val query = usersCollection.whereEqualTo("studentId", studentId).get().await()
@@ -71,7 +77,11 @@ class AuthRepository @Inject constructor() {
 
     suspend fun signUp(email: String, password: String, fullname: String, studentId: String, campus: String): Result<FirebaseUser> {
         return try {
-            Log.d("AuthRepository", "Attempting to sign up user: $email with fullname: $fullname, studentId: $studentId, campus: $campus")
+            // Trim inputs to remove any accidental whitespace
+            val trimmedEmail = email.trim()
+            val trimmedPassword = password.trim()
+
+            Log.d("AuthRepository", "Attempting to sign up user: $trimmedEmail with fullname: $fullname, studentId: $studentId, campus: $campus")
 
             // Check if student ID already exists
             if (checkStudentIdExists(studentId)) {
@@ -79,35 +89,36 @@ class AuthRepository @Inject constructor() {
             }
 
             // Check if email already exists in Firestore (as a document ID)
-            if (checkEmailExists(email)) {
+            if (checkEmailExists(trimmedEmail)) {
                 return Result.failure(Exception("Email already exists in our database."))
             }
 
-            val authResult = firebaseAuth.createUserWithEmailAndPassword(email, password).await()
+            val authResult = firebaseAuth.createUserWithEmailAndPassword(trimmedEmail, trimmedPassword).await()
             val firebaseUser = authResult.user
 
             if (firebaseUser != null) {
                 Log.d("AuthRepository", "User created successfully: ${firebaseUser.uid}")
 
                 // Hash the password before storing
-                val hashedPassword = hashPassword(password)
+                val hashedPassword = hashPassword(trimmedPassword)
 
                 // Create user document in Firestore with required fields
                 val user = hashMapOf(
-                    "email" to email,
+                    "email" to trimmedEmail,
                     "fullname" to fullname,
                     "studentId" to studentId,
                     "campus" to campus,
                     "hashedPassword" to hashedPassword,  // Store hashed password
                     "userId" to firebaseUser.uid,
                     "createdAt" to com.google.firebase.Timestamp.now(),
-                    "lastLogin" to com.google.firebase.Timestamp.now()
+                    "lastLogin" to com.google.firebase.Timestamp.now(),
+                    "profilePictureUrl" to ""  // Initialize with empty profile picture URL
                 )
 
                 // Store in users collection with email as document ID
                 try {
-                    Log.d("AuthRepository", "Storing user data in Firestore with email as document ID: $email")
-                    usersCollection.document(email).set(user).await()
+                    Log.d("AuthRepository", "Storing user data in Firestore with email as document ID: $trimmedEmail")
+                    usersCollection.document(trimmedEmail).set(user).await()
                     Log.d("AuthRepository", "User data stored in Firestore successfully with email as document ID")
 
                     // Update the user's display name in Firebase Auth
@@ -142,52 +153,79 @@ class AuthRepository @Inject constructor() {
 
     suspend fun signIn(email: String, password: String): Result<FirebaseUser> {
         return try {
-            Log.d("AuthRepository", "Attempting to sign in user: $email")
+            // Trim inputs to remove any accidental whitespace
+            val trimmedEmail = email.trim()
+            val trimmedPassword = password.trim()
 
-            // First check if the user exists in Firestore
-            val userExists = checkEmailExists(email)
-            if (!userExists) {
-                Log.e("AuthRepository", "No account found with email: $email")
-                return Result.failure(Exception("User not found"))
-            }
+            Log.d("AuthRepository", "Attempting to sign in user: $trimmedEmail")
 
-            // If user exists, try to authenticate
-            val authResult = firebaseAuth.signInWithEmailAndPassword(email, password).await()
-            val firebaseUser = authResult.user
+            // Debug log to help diagnose issues
+            Log.d("AuthRepository", "Password length: ${trimmedPassword.length}, contains spaces: ${trimmedPassword.contains(" ")}")
 
-            if (firebaseUser != null) {
-                Log.d("AuthRepository", "User signed in successfully: ${firebaseUser.uid}")
+            try {
+                // Try to authenticate with Firebase Auth
+                val authResult = firebaseAuth.signInWithEmailAndPassword(trimmedEmail, trimmedPassword).await()
+                val firebaseUser = authResult.user
 
-                // Update last login timestamp
-                try {
-                    usersCollection.document(email).update(
-                        "lastLogin", com.google.firebase.Timestamp.now()
-                    ).await()
-                    Log.d("AuthRepository", "Updated last login timestamp")
-                } catch (e: Exception) {
-                    Log.e("AuthRepository", "Error updating last login: ${e.message}", e)
-                    // Continue even if update fails
+                if (firebaseUser != null) {
+                    Log.d("AuthRepository", "User signed in successfully: ${firebaseUser.uid}")
+
+                    // Check if user exists in Firestore
+                    val userExists = checkEmailExists(trimmedEmail)
+                    if (!userExists) {
+                        Log.w("AuthRepository", "User authenticated but not found in Firestore. Creating minimal record.")
+                        // You could create a minimal user record here if needed
+                    }
+
+                    // Update last login timestamp if the user exists in Firestore
+                    try {
+                        if (userExists) {
+                            usersCollection.document(trimmedEmail).update(
+                                "lastLogin", com.google.firebase.Timestamp.now()
+                            ).await()
+                            Log.d("AuthRepository", "Updated last login timestamp")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("AuthRepository", "Error updating last login: ${e.message}", e)
+                        // Continue even if update fails
+                    }
+
+                    Result.success(firebaseUser)
+                } else {
+                    Log.e("AuthRepository", "Sign in returned null user")
+                    Result.failure(Exception("Authentication failed"))
+                }
+            } catch (e: FirebaseAuthInvalidUserException) {
+                // This exception is thrown when the user doesn't exist
+                Log.e("AuthRepository", "User not found: ${e.message}")
+                Result.failure(Exception("User not found"))
+            } catch (e: FirebaseAuthInvalidCredentialsException) {
+                // This exception is thrown when the password is incorrect
+                Log.e("AuthRepository", "Invalid credentials: ${e.message}")
+                Result.failure(Exception("Incorrect password"))
+            } catch (e: Exception) {
+                // Handle other exceptions
+                Log.e("AuthRepository", "Error during authentication: ${e.message}", e)
+
+                // More detailed error handling
+                val errorMessage = when {
+                    e.message?.contains("no user record") == true ||
+                            e.message?.contains("user may have been deleted") == true ->
+                        "User not found"
+                    e.message?.contains("password is invalid") == true ||
+                            e.message?.contains("credential") == true ||
+                            e.message?.contains("INVALID_LOGIN_CREDENTIALS") == true ->
+                        "Incorrect password"
+                    else -> "Sign in failed: ${e.message}"
                 }
 
-                Result.success(firebaseUser)
-            } else {
-                Log.e("AuthRepository", "Sign in returned null user")
-                Result.failure(Exception("Authentication failed"))
+                Log.e("AuthRepository", "Returning error: $errorMessage")
+                Result.failure(Exception(errorMessage))
             }
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Error in signIn: ${e.message}", e)
-
-            // Improved error handling to distinguish between different error types
-            val errorMessage = when {
-                e.message?.contains("no user record") == true ||
-                        e.message?.contains("user may have been deleted") == true ->
-                    "User not found"
-                e.message?.contains("password is invalid") == true ||
-                        e.message?.contains("credential") == true ->
-                    "Incorrect password"
-                else -> "Sign in failed"
-            }
-            Result.failure(Exception(errorMessage))
+            // This catch block handles any exceptions outside the inner try-catch
+            Log.e("AuthRepository", "Unexpected error in signIn: ${e.message}", e)
+            Result.failure(Exception("Sign in failed: ${e.message}"))
         }
     }
 
@@ -197,7 +235,7 @@ class AuthRepository @Inject constructor() {
 
             // First, get the user's email from Firebase Auth
             val firebaseUser = firebaseAuth.currentUser
-            val email = firebaseUser?.email
+            val email = firebaseUser?.email?.trim()
 
             if (email != null) {
                 // Try to get the document using the email as document ID
@@ -215,7 +253,8 @@ class AuthRepository @Inject constructor() {
                         campus = userData?.get("campus") as? String ?: "",
                         hashedPassword = userData?.get("hashedPassword") as? String ?: "",
                         userId = userId,
-                        documentId = email  // Store the email as document ID
+                        documentId = email,  // Store the email as document ID
+                        profilePictureUrl = userData?.get("profilePictureUrl") as? String ?: ""
                     )
 
                     Log.d("AuthRepository", "User data retrieved successfully: $user")
@@ -237,7 +276,8 @@ class AuthRepository @Inject constructor() {
                             campus = userData?.get("campus") as? String ?: "",
                             hashedPassword = userData?.get("hashedPassword") as? String ?: "",
                             userId = userId,
-                            documentId = doc.id
+                            documentId = doc.id,
+                            profilePictureUrl = userData?.get("profilePictureUrl") as? String ?: ""
                         )
 
                         Log.d("AuthRepository", "User data retrieved by userId query: $user")
@@ -272,11 +312,63 @@ class AuthRepository @Inject constructor() {
         }
     }
 
+    // Updated function to upload profile picture with deletion of previous picture
+    suspend fun uploadProfilePicture(imageUri: Uri, email: String): Result<String> {
+        return try {
+            val trimmedEmail = email.trim()
+            Log.d("AuthRepository", "Uploading profile picture for user: $trimmedEmail")
+
+            if (trimmedEmail.isEmpty()) {
+                return Result.failure(Exception("Email is required to upload profile picture"))
+            }
+
+            // First, check if the user already has a profile picture
+            val userDoc = usersCollection.document(trimmedEmail).get().await()
+            val currentProfilePicUrl = userDoc.getString("profilePictureUrl") ?: ""
+
+            // If there's an existing profile picture, delete it first
+            if (currentProfilePicUrl.isNotEmpty()) {
+                try {
+                    // Extract the path from the URL to delete the file
+                    val storageRef = storage.getReferenceFromUrl(currentProfilePicUrl)
+                    storageRef.delete().await()
+                    Log.d("AuthRepository", "Previous profile picture deleted: $currentProfilePicUrl")
+                } catch (e: Exception) {
+                    // If deletion fails, log the error but continue with the upload
+                    Log.e("AuthRepository", "Error deleting previous profile picture: ${e.message}", e)
+                }
+            }
+
+            // Create a reference to the user's profile picture in Firebase Storage
+            // Using a consistent filename pattern to make it easier to manage
+            val storageRef = storage.reference
+                .child("profile_pictures")
+                .child(trimmedEmail)
+                .child("profile.jpg")
+
+            // Upload the file and wait for completion
+            storageRef.putFile(imageUri).await()
+
+            // Get the download URL
+            val downloadUrl = storageRef.downloadUrl.await().toString()
+            Log.d("AuthRepository", "Profile picture uploaded successfully. URL: $downloadUrl")
+
+            // Update the user's profile picture URL in Firestore
+            usersCollection.document(trimmedEmail).update("profilePictureUrl", downloadUrl).await()
+            Log.d("AuthRepository", "Profile picture URL updated in Firestore")
+
+            Result.success(downloadUrl)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error uploading profile picture: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun deleteAccount(): Result<Unit> {
         return try {
             val currentUser = firebaseAuth.currentUser
             if (currentUser != null) {
-                val email = currentUser.email
+                val email = currentUser.email?.trim()
                 val userId = currentUser.uid
 
                 Log.d("AuthRepository", "Attempting to delete account for user: $email, $userId")
@@ -338,6 +430,39 @@ class AuthRepository @Inject constructor() {
 
                 if (!firestoreDeleteSuccess) {
                     Log.w("AuthRepository", "Could not find and delete user documents in Firestore")
+                }
+
+                // Delete profile pictures from Storage if they exist
+                if (email != null) {
+                    try {
+                        // Delete the entire profile_pictures folder for this user
+                        val storageRef = storage.reference.child("profile_pictures").child(email)
+
+                        // First delete all files in the folder
+                        val listResult = storageRef.listAll().await()
+
+                        // Delete all items (files) in the folder
+                        listResult.items.forEach { item ->
+                            item.delete().await()
+                            Log.d("AuthRepository", "Deleted profile picture: ${item.path}")
+                        }
+
+                        // Delete all prefixes (subfolders) recursively
+                        listResult.prefixes.forEach { prefix ->
+                            // For each prefix, list and delete its contents
+                            val subListResult = prefix.listAll().await()
+                            subListResult.items.forEach { item ->
+                                item.delete().await()
+                                Log.d("AuthRepository", "Deleted nested file: ${item.path}")
+                            }
+                        }
+
+                        // The folder itself is automatically removed when empty
+                        Log.d("AuthRepository", "Successfully cleaned up user storage data")
+                    } catch (e: Exception) {
+                        Log.e("AuthRepository", "Error deleting profile pictures: ${e.message}", e)
+                        // Continue even if deletion fails
+                    }
                 }
 
                 // Finally delete the Firebase Auth account

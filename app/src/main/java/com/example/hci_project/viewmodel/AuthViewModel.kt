@@ -1,5 +1,6 @@
 package com.example.hci_project.viewmodel
 
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -129,6 +130,38 @@ class AuthViewModel @Inject constructor(
                     userId = userId,
                     email = authRepository.getCurrentUser()?.email ?: ""
                 )
+            }
+        }
+    }
+
+    // Updated function to upload profile picture
+    fun uploadProfilePicture(uri: Uri, onSuccess: (String) -> Unit, onFailure: (Exception) -> Unit) {
+        viewModelScope.launch {
+            Log.d("AuthViewModel", "Uploading profile picture")
+            try {
+                val currentUserValue = _currentUser.value
+                if (currentUserValue != null) {
+                    val result = authRepository.uploadProfilePicture(uri, currentUserValue.email)
+
+                    result.fold(
+                        onSuccess = { downloadUrl ->
+                            Log.d("AuthViewModel", "Profile picture uploaded successfully: $downloadUrl")
+                            // Update the user object with the new profile picture URL
+                            _currentUser.value = currentUserValue.copy(profilePictureUrl = downloadUrl)
+                            onSuccess(downloadUrl)
+                        },
+                        onFailure = { error ->
+                            Log.e("AuthViewModel", "Profile picture upload failed: ${error.message}")
+                            onFailure(error as Exception)
+                        }
+                    )
+                } else {
+                    Log.e("AuthViewModel", "Cannot upload profile picture: No current user")
+                    onFailure(Exception("No current user"))
+                }
+            } catch (e: Exception) {
+                Log.e("AuthViewModel", "Exception during profile picture upload: ${e.message}", e)
+                onFailure(e)
             }
         }
     }

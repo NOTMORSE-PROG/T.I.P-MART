@@ -1,12 +1,26 @@
 package com.example.hci_project
 
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -19,14 +33,81 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Message
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,123 +116,96 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import com.example.hci_project.model.Product
 import com.example.hci_project.ui.theme.HCI_PROJECYTheme
-import com.example.hci_project.viewmodel.AuthViewModel
-import kotlinx.coroutines.launch
 import com.example.hci_project.utils.toTitleCase
+import com.example.hci_project.viewmodel.AuthViewModel
+import com.example.hci_project.viewmodel.ProductViewModel
+import com.example.hci_project.viewmodel.RatingSortOption
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.Locale
 
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onLogout: () -> Unit,
-    viewModel: AuthViewModel = hiltViewModel()
+    viewModel: AuthViewModel = hiltViewModel(),
+    productViewModel: ProductViewModel = hiltViewModel()
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showAboutScreen by remember { mutableStateOf(false) }
+    var showEditProfileScreen by remember { mutableStateOf(false) }
+    var showCreateListingScreen by remember { mutableStateOf(false) }
+    var showProductDetailScreen by remember { mutableStateOf(false) }
+    var showCartScreen by remember { mutableStateOf(false) }
+    var selectedProductId by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    // Get cart item count for badge
+    val cartItemCount by productViewModel.cartItemCount.collectAsState()
+
+    // Fetch cart items when the screen is first displayed
+    val currentUser by viewModel.currentUser.collectAsState()
+    LaunchedEffect(currentUser) {
+        currentUser?.userId?.let { userId ->
+            Log.d("DashboardScreen", "Fetching cart items for user: $userId")
+            productViewModel.fetchCartItems(userId)
+        }
+    }
 
     // Sample data
     val categories = listOf(
         "All", "Electronics", "Books", "Clothing", "Food", "Services", "Accessories", "School Supplies"
     )
 
-    val products = listOf(
-        Product(
-            id = 1,
-            name = "TIP Engineering Calculator",
-            price = "₱450",
-            seller = "John Doe",
-            imageRes = R.drawable.ic_launcher_foreground,
-            category = "Electronics",
-            campus = "Manila"
-        ),
-        Product(
-            id = 2,
-            name = "Data Structures Textbook",
-            price = "₱350",
-            seller = "Jane Smith",
-            imageRes = R.drawable.ic_launcher_foreground,
-            category = "Books",
-            campus = "Quezon City"
-        ),
-        Product(
-            id = 3,
-            name = "TIP Uniform (Medium)",
-            price = "₱800",
-            seller = "Mike Johnson",
-            imageRes = R.drawable.ic_launcher_foreground,
-            category = "Clothing",
-            campus = "Manila"
-        ),
-        Product(
-            id = 4,
-            name = "Homemade Cookies (12 pcs)",
-            price = "₱120",
-            seller = "Sarah Lee",
-            imageRes = R.drawable.ic_launcher_foreground,
-            category = "Food",
-            campus = "Quezon City"
-        ),
-        Product(
-            id = 5,
-            name = "Programming Tutoring (per hour)",
-            price = "₱250",
-            seller = "Alex Chen",
-            imageRes = R.drawable.ic_launcher_foreground,
-            category = "Services",
-            campus = "Manila"
-        ),
-        Product(
-            id = 6,
-            name = "Scientific Calculator",
-            price = "₱350",
-            seller = "David Wilson",
-            imageRes = R.drawable.ic_launcher_foreground,
-            category = "Electronics",
-            campus = "Quezon City"
-        ),
-        Product(
-            id = 7,
-            name = "TIP Lanyard",
-            price = "₱75",
-            seller = "Emma Garcia",
-            imageRes = R.drawable.ic_launcher_foreground,
-            category = "Accessories",
-            campus = "Manila"
-        ),
-        Product(
-            id = 8,
-            name = "Engineering Notebook",
-            price = "₱120",
-            seller = "Carlos Rodriguez",
-            imageRes = R.drawable.ic_launcher_foreground,
-            category = "School Supplies",
-            campus = "Quezon City"
-        )
-    )
-
     var selectedCategory by remember { mutableStateOf("All") }
     var selectedCampus by remember { mutableStateOf("All") }
+    var ratingSortOption by remember { mutableStateOf(RatingSortOption.NONE) }
 
-    // Filter products based on category, campus, and search query
-    val filteredProducts = products.filter { product ->
-        val matchesCategory = selectedCategory == "All" || product.category == selectedCategory
-        val matchesCampus = selectedCampus == "All" || product.campus == selectedCampus
-        val matchesSearch = searchQuery.isEmpty() ||
-                product.name.contains(searchQuery, ignoreCase = true) ||
-                product.seller.contains(searchQuery, ignoreCase = true) ||
-                product.category.contains(searchQuery, ignoreCase = true)
-
-        matchesCategory && matchesCampus && matchesSearch
-    }
-
-    if (showAboutScreen) {
+    if (showProductDetailScreen) {
+        ProductDetailScreen(
+            productId = selectedProductId,
+            onBackClick = {
+                showProductDetailScreen = false
+                selectedProductId = ""
+            },
+            onCartClick = {
+                showProductDetailScreen = false
+                showCartScreen = true
+            }
+        )
+    } else if (showCartScreen) {
+        CartScreen(
+            onBackClick = {
+                showCartScreen = false
+            },
+            onCheckoutClick = {
+                // TODO: Implement checkout flow
+                showCartScreen = false
+            },
+            onProductClick = { productId ->
+                selectedProductId = productId
+                showCartScreen = false
+                showProductDetailScreen = true
+            }
+        )
+    } else if (showAboutScreen) {
         AboutScreen(onBackClick = { showAboutScreen = false })
+    } else if (showEditProfileScreen) {
+        EditProfileScreen(onBackClick = { showEditProfileScreen = false })
+    } else if (showCreateListingScreen) {
+        CreateListingScreen(
+            onBackClick = { showCreateListingScreen = false },
+            productViewModel = productViewModel
+        )
     } else {
-        // Drawer layout
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
@@ -183,9 +237,7 @@ fun DashboardScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
 
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    ) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                         listOf("All", "Manila", "Quezon City").forEach { campus ->
                             Row(
                                 modifier = Modifier
@@ -212,7 +264,7 @@ fun DashboardScreen(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                    // Categories
+                    // Categories Filter
                     Text(
                         text = "Categories",
                         fontWeight = FontWeight.Bold,
@@ -220,9 +272,7 @@ fun DashboardScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
 
-                    LazyColumn(
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    ) {
+                    LazyColumn(modifier = Modifier.padding(horizontal = 16.dp)) {
                         items(categories) { category ->
                             Row(
                                 modifier = Modifier
@@ -249,12 +299,18 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Apply button
+                    // Apply Filters Button (FIXED PADDING)
                     Button(
-                        onClick = { scope.launch { drawerState.close() } },
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
+                            .padding(
+                                start = 16.dp,
+                                end = 16.dp,
+                                bottom = 16.dp
+                            )
                     ) {
                         Text("Apply Filters")
                     }
@@ -264,7 +320,6 @@ fun DashboardScreen(
             Scaffold(
                 topBar = {
                     if (isSearchActive) {
-                        // Search TopBar
                         TopAppBar(
                             title = {
                                 OutlinedTextField(
@@ -297,7 +352,6 @@ fun DashboardScreen(
                             )
                         )
                     } else {
-                        // Regular TopBar
                         TopAppBar(
                             title = {
                                 Text(
@@ -306,7 +360,9 @@ fun DashboardScreen(
                                 )
                             },
                             navigationIcon = {
-                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                IconButton(onClick = {
+                                    scope.launch { drawerState.open() }
+                                }) {
                                     Icon(
                                         imageVector = Icons.Default.Menu,
                                         contentDescription = "Menu"
@@ -320,11 +376,23 @@ fun DashboardScreen(
                                         contentDescription = "Search"
                                     )
                                 }
-                                IconButton(onClick = { /* TODO: Cart functionality */ }) {
-                                    Icon(
-                                        imageVector = Icons.Default.ShoppingCart,
-                                        contentDescription = "Cart"
-                                    )
+
+                                Box(modifier = Modifier.padding(end = 12.dp)) {
+                                    IconButton(onClick = { showCartScreen = true }) {
+                                        Icon(
+                                            imageVector = Icons.Default.ShoppingCart,
+                                            contentDescription = "Cart"
+                                        )
+                                    }
+                                    if (cartItemCount > 0) {
+                                        Badge(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = (-8).dp, y = 8.dp)
+                                        ) {
+                                            Text(text = cartItemCount.toString())
+                                        }
+                                    }
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
@@ -373,21 +441,31 @@ fun DashboardScreen(
             ) { paddingValues ->
                 when (selectedTab) {
                     0 -> HomeTab(
-                        products = filteredProducts,
                         selectedCategory = selectedCategory,
                         selectedCampus = selectedCampus,
+                        ratingSortOption = ratingSortOption,
                         searchQuery = searchQuery,
                         onFilterClick = { scope.launch { drawerState.open() } },
                         onCategoryCleared = { selectedCategory = "All" },
                         onCampusCleared = { selectedCampus = "All" },
+                        onRatingSortCleared = { ratingSortOption = RatingSortOption.NONE },
+                        onProductClick = { productId ->
+                            selectedProductId = productId
+                            showProductDetailScreen = true
+                        },
+                        modifier = Modifier.padding(paddingValues),
+                        productViewModel = productViewModel
+                    )
+                    1 -> SellTab(
+                        onCreateListingClick = { showCreateListingScreen = true },
                         modifier = Modifier.padding(paddingValues)
                     )
-                    1 -> SellTab(modifier = Modifier.padding(paddingValues))
                     2 -> MessagesTab(modifier = Modifier.padding(paddingValues))
                     3 -> NoticeTab(modifier = Modifier.padding(paddingValues))
                     4 -> SettingsTab(
                         onLogout = onLogout,
                         onAboutClick = { showAboutScreen = true },
+                        onEditProfileClick = { showEditProfileScreen = true },
                         onDeleteAccount = {
                             viewModel.deleteAccount {
                                 onLogout()
@@ -402,17 +480,83 @@ fun DashboardScreen(
     }
 }
 
+
+// Modify the HomeTab to force refresh ratings when needed
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun HomeTab(
-    products: List<Product>,
     selectedCategory: String,
     selectedCampus: String,
+    ratingSortOption: RatingSortOption,
     searchQuery: String,
     onFilterClick: () -> Unit,
     onCategoryCleared: () -> Unit,
     onCampusCleared: () -> Unit,
-    modifier: Modifier = Modifier
+    onRatingSortCleared: () -> Unit,
+    onProductClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    productViewModel: ProductViewModel = hiltViewModel()
 ) {
+    // State for real products from Firebase
+    val productState by productViewModel.productState.collectAsState()
+    val allProducts by productViewModel.allProducts.collectAsState()
+    val currentRatingSortOption by productViewModel.ratingSortOption.collectAsState()
+
+    // Observe the allRatings state to ensure UI updates when ratings change
+    val allRatings by productViewModel.allRatings.collectAsState()
+
+    // State for sort dropdown
+    var showSortDropdown by remember { mutableStateOf(false) }
+
+    // Fetch products and ratings immediately when the component is first composed
+    LaunchedEffect(Unit) {
+        Log.d("HomeTab", "Initial load - fetching all products and ratings")
+        productViewModel.fetchAllProducts() // This will also trigger loadAllRatingsAtOnce()
+    }
+
+    // Force refresh ratings periodically to ensure they're loaded
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(5000) // Refresh every 5 seconds
+            productViewModel.loadAllRatingsAtOnce()
+        }
+    }
+
+
+    LocalContext.current
+
+    // Filter real products based on category, campus, and search query
+    var filteredProducts = allProducts.filter { product ->
+        val matchesCategory = selectedCategory == "All" || product.category == selectedCategory
+        val matchesCampus = selectedCampus == "All" || product.campus == selectedCampus
+        val matchesSearch = searchQuery.isEmpty() ||
+                product.title.contains(searchQuery, ignoreCase = true) ||
+                product.sellerName.contains(searchQuery, ignoreCase = true) ||
+                product.category.contains(searchQuery, ignoreCase = true)
+
+        matchesCategory && matchesCampus && matchesSearch
+    }
+
+    filteredProducts = when (currentRatingSortOption) {
+        RatingSortOption.HIGH_TO_LOW -> {
+            filteredProducts.sortedByDescending { product ->
+                val ratings = allRatings[product.id] ?: emptyList()
+                if (ratings.isEmpty()) 0f else ratings.map { it.rating }.average().toFloat()
+            }
+        }
+
+        RatingSortOption.LOW_TO_HIGH -> {
+            filteredProducts.sortedWith(compareBy { product ->
+                val ratings = allRatings[product.id] ?: emptyList()
+                if (ratings.isEmpty()) Float.MIN_VALUE else ratings.map { it.rating }.average().toFloat()
+            })
+        }
+
+        else -> filteredProducts
+    }
+
+
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -433,7 +577,7 @@ fun HomeTab(
             )
 
             // Show active filters as chips
-            if (selectedCategory != "All" || selectedCampus != "All") {
+            if (selectedCategory != "All" || selectedCampus != "All" || ratingSortOption != RatingSortOption.NONE) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier
@@ -474,8 +618,35 @@ fun HomeTab(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null
                                     ) {
-                                        // Clear campus filter without opening sidebar
                                         onCampusCleared()
+                                    }
+                                )
+                            }
+                        )
+                    }
+
+                    if (ratingSortOption != RatingSortOption.NONE) {
+                        FilterChip(
+                            selected = true,
+                            onClick = { /* Do nothing on chip body click */ },
+                            label = {
+                                Text(
+                                    when (ratingSortOption) {
+                                        RatingSortOption.HIGH_TO_LOW -> "Rating: High to Low"
+                                        RatingSortOption.LOW_TO_HIGH -> "Rating: Low to High"
+                                        else -> ""
+                                    }
+                                )
+                            },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear rating sort",
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        onRatingSortCleared()
                                     }
                                 )
                             }
@@ -501,15 +672,128 @@ fun HomeTab(
             )
         }
 
-        // Products
-        Text(
-            text = "Products",
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-        )
+        // Products header with sort button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Products",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
 
-        if (products.isEmpty()) {
+            // Sort button with dropdown
+            Box {
+                IconButton(onClick = { showSortDropdown = !showSortDropdown }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Sort,
+                        contentDescription = "Sort"
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showSortDropdown,
+                    onDismissRequest = { showSortDropdown = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("No Rating Sort") },
+                        onClick = {
+                            productViewModel.setRatingSortOption(RatingSortOption.NONE)
+                            onRatingSortCleared()
+                            showSortDropdown = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Rating: High to Low")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDownward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        },
+                        onClick = {
+                            productViewModel.setRatingSortOption(RatingSortOption.HIGH_TO_LOW)
+                            showSortDropdown = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Rating: Low to High")
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        },
+                        onClick = {
+                            productViewModel.setRatingSortOption(RatingSortOption.LOW_TO_HIGH)
+                            showSortDropdown = false
+                        }
+                    )
+                }
+            }
+        }
+
+        // Loading state
+        if (productState is ProductViewModel.ProductState.Loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        // Error state
+        else if (productState is ProductViewModel.ProductState.Error) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = (productState as ProductViewModel.ProductState.Error).message,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = { productViewModel.fetchAllProducts() }
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+        // Empty state
+        else if (filteredProducts.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -552,7 +836,9 @@ fun HomeTab(
                     }
                 }
             }
-        } else {
+        }
+        // Products grid
+        else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -560,24 +846,55 @@ fun HomeTab(
                 contentPadding = PaddingValues(bottom = 16.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(products) { product ->
-                    ProductCard(product = product)
+                items(filteredProducts) { product ->
+                    RealProductCard(
+                        product = product,
+                        onProductClick = onProductClick,
+                        productViewModel = productViewModel
+                    )
                 }
             }
         }
     }
 }
-
+// Modify the RealProductCard to ensure it always shows ratings
 @Composable
-fun ProductCard(
+fun RealProductCard(
     product: Product,
+    onProductClick: (String) -> Unit,
+    productViewModel: ProductViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
+    // Get ratings from the global allRatings state
+    val allRatings by productViewModel.allRatings.collectAsState()
+    val ratings = allRatings[product.id] ?: emptyList()
+
+    val averageRating = if (ratings.isNotEmpty()) {
+        ratings.map { it.rating }.average().toFloat()
+    } else {
+        0f
+    }
+
+    // Debug log to check if ratings are available
+    LaunchedEffect(ratings) {
+        Log.d("RealProductCard", "Product ${product.id} has ${ratings.size} ratings, avg: $averageRating")
+    }
+
+    // If no ratings found in global state, try to fetch them specifically for this product
+    LaunchedEffect(product.id, ratings.isEmpty()) {
+        if (ratings.isEmpty()) {
+            Log.d("RealProductCard", "No ratings found for ${product.id}, fetching now")
+            productViewModel.fetchRatingsForProduct(product.id)
+        }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .height(240.dp)  // Increased height to accommodate campus info
-            .clickable { /* TODO: Product detail */ },
+            .height(260.dp) // Increased height to accommodate rating
+            .clickable { onProductClick(product.id) },
         shape = RoundedCornerShape(8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -588,12 +905,33 @@ fun ProductCard(
                     .fillMaxWidth()
                     .height(120.dp)
             ) {
-                Image(
-                    painter = painterResource(id = product.imageRes),
-                    contentDescription = product.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+                if (product.imageUrls.isNotEmpty()) {
+                    Image(
+                        painter = rememberAsyncImagePainter(
+                            ImageRequest.Builder(context)
+                                .data(product.imageUrls.first())
+                                .crossfade(true)
+                                .build()
+                        ),
+                        contentDescription = product.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    // Placeholder if no image
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 // Campus Badge
                 Surface(
@@ -618,25 +956,57 @@ fun ProductCard(
                     .padding(8.dp)
             ) {
                 Text(
-                    text = product.name,
+                    text = product.title,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
                 Text(
-                    text = product.price,
+                    text = "₱${product.price}",
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
+
+                // Rating display
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                ) {
+                    // Star rating
+                    for (i in 1..5) {
+                        Icon(
+                            imageVector = if (i <= averageRating) Icons.Default.Star else Icons.Default.StarOutline,
+                            contentDescription = null,
+                            tint = if (i <= averageRating) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Rating text
+                    Text(
+                        text = if (ratings.isNotEmpty()) {
+                            String.format(Locale.US, "%.1f", averageRating)
+                        } else {
+                            "No ratings"
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+
                 Text(
-                    text = "Seller: ${product.seller}",
+                    text = "Seller: ${product.sellerName.toTitleCase()}",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
                 Text(
                     text = "Category: ${product.category}",
                     fontSize = 12.sp,
@@ -650,47 +1020,466 @@ fun ProductCard(
 }
 
 @Composable
-fun SellTab(modifier: Modifier = Modifier) {
-    // Placeholder for Sell tab
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+fun SellTab(
+    onCreateListingClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    authViewModel: AuthViewModel = hiltViewModel(),
+    productViewModel: ProductViewModel = hiltViewModel()
+) {
+    LocalContext.current
+    val currentUser by authViewModel.currentUser.collectAsState()
+    val productState by productViewModel.productState.collectAsState()
+    val userProducts by productViewModel.userProducts.collectAsState()
+
+    // Dialog states
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var productToDelete by remember { mutableStateOf<Product?>(null) }
+    var showStatusDialog by remember { mutableStateOf(false) }
+    var productToUpdateStatus by remember { mutableStateOf<Product?>(null) }
+
+    // Edit state
+    var showEditScreen by remember { mutableStateOf(false) }
+    var productToEdit by remember { mutableStateOf<Product?>(null) }
+
+    // Fetch user products when the component is first composed
+    LaunchedEffect(currentUser) {
+        currentUser?.userId?.let { userId ->
+            productViewModel.fetchUserProducts(userId)
+        }
+    }
+
+    // Show edit screen if a product is selected for editing
+    if (showEditScreen && productToEdit != null) {
+        EditListingScreen(
+            product = productToEdit!!,
+            onBackClick = {
+                showEditScreen = false
+                productToEdit = null
+            }
+        )
+        return
+    }
+
+    // Delete confirmation dialog
+    if (showDeleteDialog && productToDelete != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteDialog = false
+                productToDelete = null
+            },
+            title = { Text("Delete Listing") },
+            text = { Text("Are you sure you want to delete this listing? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        productToDelete?.id?.let { productId ->
+                            productViewModel.deleteProduct(productId)
+                        }
+                        showDeleteDialog = false
+                        productToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        productToDelete = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Status update dialog
+    if (showStatusDialog && productToUpdateStatus != null) {
+        val statusOptions = listOf("active", "sold", "reserved")
+
+        AlertDialog(
+            onDismissRequest = {
+                showStatusDialog = false
+                productToUpdateStatus = null
+            },
+            title = { Text("Update Status") },
+            text = {
+                Column {
+                    Text("Select the new status for this listing:")
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    statusOptions.forEach { status ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    productToUpdateStatus?.id?.let { productId ->
+                                        productViewModel.updateProductStatus(productId, status)
+                                    }
+                                    showStatusDialog = false
+                                    productToUpdateStatus = null
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = productToUpdateStatus?.status == status,
+                                onClick = {
+                                    productToUpdateStatus?.id?.let { productId ->
+                                        productViewModel.updateProductStatus(productId, status)
+                                    }
+                                    showStatusDialog = false
+                                    productToUpdateStatus = null
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = status.replaceFirstChar {
+                                    if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showStatusDialog = false
+                        productToUpdateStatus = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            },
+            dismissButton = null
+        )
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        // Header
+        Text(
+            text = "My Listings",
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        // Create listing button
+        Button(
+            onClick = onCreateListingClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.AddCircle,
+                imageVector = Icons.Default.Add,
                 contentDescription = null,
-                modifier = Modifier.size(80.dp),
-                tint = MaterialTheme.colorScheme.primary
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Sell Your Products",
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Create a listing for items you want to sell",
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = { /* TODO: Create listing */ },
-                modifier = Modifier.padding(horizontal = 32.dp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Create New Listing")
+        }
+
+        // Loading state
+        if (productState is ProductViewModel.ProductState.Loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
+                CircularProgressIndicator()
+            }
+        }
+        // Error state
+        else if (productState is ProductViewModel.ProductState.Error) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = (productState as ProductViewModel.ProductState.Error).message,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            currentUser?.userId?.let { userId ->
+                                productViewModel.fetchUserProducts(userId)
+                            }
+                        }
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+        // Empty state
+        else if (userProducts.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ShoppingBag,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "You don't have any listings yet",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = onCreateListingClick
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Create Your First Listing")
+                    }
+                }
+            }
+        }
+        // User products list
+        else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(userProducts) { product ->
+                    UserProductCard(
+                        product = product,
+                        onDeleteClick = {
+                            productToDelete = product
+                            showDeleteDialog = true
+                        },
+                        onStatusClick = {
+                            productToUpdateStatus = product
+                            showStatusDialog = true
+                        },
+                        onEditClick = {
+                            productToEdit = product
+                            showEditScreen = true
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UserProductCard(
+    product: Product,
+    onDeleteClick: () -> Unit,
+    onStatusClick: () -> Unit,
+    onEditClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column {
+            // Product Image
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+            ) {
+                if (product.imageUrls.isNotEmpty()) {
+                    Image(
+                        painter = rememberAsyncImagePainter(
+                            ImageRequest.Builder(context)
+                                .data(product.imageUrls.first())
+                                .crossfade(true)
+                                .build()
+                        ),
+                        contentDescription = product.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    // Placeholder if no image
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Status Badge
+                Surface(
+                    color = when (product.status) {
+                        "active" -> MaterialTheme.colorScheme.primary
+                        "sold" -> MaterialTheme.colorScheme.error
+                        "reserved" -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.secondary
+                    }.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(bottomEnd = 8.dp),
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    Text(
+                        text = product.status.replaceFirstChar {
+                            if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+                        },
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Product Info
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = product.title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Create Listing")
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "₱${product.price}",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "Category: ${product.category}",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+
+                Text(
+                    text = "Campus: ${product.campus}",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+
+                Text(
+                    text = "Quantity: ${product.quantity}",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Edit Button
+                    Button(
+                        onClick = onEditClick,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Edit")
+                    }
+
+                    // Update Status Button
+                    OutlinedButton(
+                        onClick = onStatusClick,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Status")
+                    }
+
+                    // Delete Button
+                    OutlinedButton(
+                        onClick = onDeleteClick,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Delete")
+                    }
+                }
             }
         }
     }
@@ -754,24 +1543,26 @@ fun MessagesTab(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        if (messages.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No messages yet",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    textAlign = TextAlign.Center
-                )
-            }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (messages.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No messages yet",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
                 items(messages) { message ->
                     MessageItem(message = message)
                 }
@@ -902,24 +1693,26 @@ fun NoticeTab(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        if (notifications.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No notices yet",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    textAlign = TextAlign.Center
-                )
-            }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (notifications.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No notices yet",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
                 items(notifications) { notification ->
                     NotificationItem(notification = notification)
                 }
@@ -991,6 +1784,7 @@ fun NotificationItem(
 fun SettingsTab(
     onLogout: () -> Unit,
     onAboutClick: () -> Unit,
+    onEditProfileClick: () -> Unit,
     onDeleteAccount: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel()
@@ -998,6 +1792,7 @@ fun SettingsTab(
     val currentUser by viewModel.currentUser.collectAsState()
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     val authState by viewModel.authState.collectAsState()
+    val context = LocalContext.current
 
     // Debug log to check what user data we have
     LaunchedEffect(currentUser) {
@@ -1064,26 +1859,42 @@ fun SettingsTab(
                                 .padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // Profile picture
+                            // Profile picture - now using Coil to load from URL if available
                             Box(
                                 modifier = Modifier
                                     .size(80.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.primaryContainer)
-                                    .padding(16.dp),
+                                    .clickable { onEditProfileClick() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(40.dp)
-                                )
+                                if (!currentUser?.profilePictureUrl.isNullOrEmpty()) {
+                                    // Load profile picture from URL
+                                    Image(
+                                        painter = rememberAsyncImagePainter(
+                                            ImageRequest.Builder(context)
+                                                .data(currentUser?.profilePictureUrl)
+                                                .crossfade(true)
+                                                .build()
+                                        ),
+                                        contentDescription = "Profile Picture",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    // Default icon if no profile picture
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // ✅ Use title-cased full name
+                            // Use title-cased full name
                             val displayName = currentUser?.fullname
                                 ?.toTitleCase()
                                 .takeIf { !it.isNullOrBlank() } ?: "User Name"
@@ -1116,7 +1927,7 @@ fun SettingsTab(
                             Spacer(modifier = Modifier.height(16.dp))
 
                             Button(
-                                onClick = { /* TODO: Edit profile */ },
+                                onClick = { onEditProfileClick() },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(
@@ -1282,17 +2093,6 @@ fun SettingsItem(
     )
 }
 
-// Data classes
-data class Product(
-    val id: Int,
-    val name: String,
-    val price: String,
-    val seller: String,
-    val imageRes: Int,
-    val category: String,
-    val campus: String  // Added campus field
-)
-
 data class Notification(
     val id: Int,
     val title: String,
@@ -1310,6 +2110,7 @@ data class Message(
     val avatarRes: Int
 )
 
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Preview(showBackground = true)
 @Composable
 fun DashboardScreenPreview() {
@@ -1319,4 +2120,3 @@ fun DashboardScreenPreview() {
         )
     }
 }
-
