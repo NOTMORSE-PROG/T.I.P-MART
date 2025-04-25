@@ -28,52 +28,46 @@ class ProductViewModel @Inject constructor(
     private val productRepository: ProductRepository
 ) : ViewModel() {
 
-    // Product state
     private val _productState = MutableStateFlow<ProductState>(ProductState.Initial)
     val productState: StateFlow<ProductState> = _productState.asStateFlow()
 
-    // Selected product
     private val _selectedProduct = MutableStateFlow<Product?>(null)
     val selectedProduct: StateFlow<Product?> = _selectedProduct.asStateFlow()
 
-    // User products
     private val _userProducts = MutableStateFlow<List<Product>>(emptyList())
     val userProducts: StateFlow<List<Product>> = _userProducts.asStateFlow()
 
-    // All products
     private val _allProducts = MutableStateFlow<List<Product>>(emptyList())
     val allProducts: StateFlow<List<Product>> = _allProducts.asStateFlow()
 
-    // Product ratings
     private val _productRatings = MutableStateFlow<List<Rating>>(emptyList())
     val productRatings: StateFlow<List<Rating>> = _productRatings.asStateFlow()
 
-    // All ratings map (productId -> List<Rating>)
     private val _allRatings = MutableStateFlow<Map<String, List<Rating>>>(emptyMap())
     val allRatings: StateFlow<Map<String, List<Rating>>> = _allRatings.asStateFlow()
 
-    // User rating for current product
     private val _userRating = MutableStateFlow<Rating?>(null)
     val userRating: StateFlow<Rating?> = _userRating.asStateFlow()
 
-    // Cart items
     private val _cartItems = MutableStateFlow<Map<String, Int>>(emptyMap())
     val cartItems: StateFlow<Map<String, Int>> = _cartItems.asStateFlow()
 
-    // Cart item count
     private val _cartItemCount = MutableStateFlow(0)
     val cartItemCount: StateFlow<Int> = _cartItemCount.asStateFlow()
 
-    // Seller profile picture
     private val _sellerProfilePicture = MutableStateFlow("")
     val sellerProfilePicture: StateFlow<String> = _sellerProfilePicture.asStateFlow()
 
-    // Rating sort option
     private val _ratingSortOption = MutableStateFlow(RatingSortOption.NONE)
     val ratingSortOption: StateFlow<RatingSortOption> = _ratingSortOption.asStateFlow()
 
-    // Cache for product ratings
     private val productRatingsCache = mutableMapOf<String, List<Rating>>()
+
+    private val _wishlistProducts = MutableStateFlow<List<Product>>(emptyList())
+    val wishlistProducts: StateFlow<List<Product>> = _wishlistProducts.asStateFlow()
+
+    private val _wishlistProductIds = MutableStateFlow<Set<String>>(emptySet())
+    val wishlistProductIds: StateFlow<Set<String>> = _wishlistProductIds.asStateFlow()
 
     // Create a new product
     fun createProduct(
@@ -412,6 +406,56 @@ class ProductViewModel @Inject constructor(
         }
     }
 
+    // Delete a rating
+    fun deleteRating(ratingId: String, productId: String) {
+        viewModelScope.launch {
+            _productState.value = ProductState.Loading
+
+            try {
+                Log.d("ProductViewModel", "Deleting rating: $ratingId for product: $productId")
+                val result = productRepository.deleteRating(ratingId)
+
+                result.fold(
+                    onSuccess = {
+                        Log.d("ProductViewModel", "Rating deleted successfully")
+
+                        // Remove the rating from the current list
+                        _productRatings.value = _productRatings.value.filter { it.id != ratingId }
+
+                        // If this was the user's rating, clear it
+                        if (_userRating.value?.id == ratingId) {
+                            _userRating.value = null
+                        }
+
+                        // Update the all ratings map
+                        val updatedAllRatings = _allRatings.value.toMutableMap()
+                        val productRatings = updatedAllRatings[productId]?.filter { it.id != ratingId }
+                        if (productRatings != null) {
+                            updatedAllRatings[productId] = productRatings
+                        }
+                        _allRatings.value = updatedAllRatings
+
+                        // Update the cache
+                        productRatingsCache[productId] = productRatingsCache[productId]?.filter { it.id != ratingId } ?: emptyList()
+
+                        _productState.value = ProductState.RatingDeleted
+
+                        // Refresh ratings after a short delay
+                        delay(500)
+                        fetchRatingsForProduct(productId)
+                    },
+                    onFailure = { e ->
+                        Log.e("ProductViewModel", "Error deleting rating: ${e.message}", e)
+                        _productState.value = ProductState.Error(e.message ?: "Failed to delete rating")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("ProductViewModel", "Exception deleting rating: ${e.message}", e)
+                _productState.value = ProductState.Error(e.message ?: "An unexpected error occurred")
+            }
+        }
+    }
+
     // Get ratings for a product
     fun fetchRatingsForProduct(productId: String) {
         viewModelScope.launch {
@@ -538,7 +582,6 @@ class ProductViewModel @Inject constructor(
 
                         _productState.value = ProductState.ProductAddedToCart
 
-                        // Also refresh cart items from server to ensure consistency
                         fetchCartItems(userId)
                     },
                     onFailure = { e ->
@@ -619,6 +662,193 @@ class ProductViewModel @Inject constructor(
         _userRating.value = null
     }
 
+    // Check if a product is in the wishlist
+    fun checkIfInWishlist(userId: String, productId: String) {
+        viewModelScope.launch {
+            try {
+                val result = productRepository.isProductInWishlist(userId, productId)
+
+                result.fold(
+                    onSuccess = { isInWishlist ->
+                        if (isInWishlist) {
+                            _wishlistProductIds.value += productId
+                        } else {
+                            _wishlistProductIds.value -= productId
+                        }
+                    },
+                    onFailure = { e ->
+                        Log.e("ProductViewModel", "Error checking wishlist: ${e.message}")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("ProductViewModel", "Exception checking wishlist: ${e.message}")
+            }
+        }
+    }
+
+    // Fetch all wishlist product IDs
+    fun fetchWishlistProductIds(userId: String) {
+        viewModelScope.launch {
+            try {
+                val result = productRepository.getWishlistItems(userId)
+
+                result.fold(
+                    onSuccess = { productIds ->
+                        _wishlistProductIds.value = productIds.toSet()
+                        Log.d("ProductViewModel", "Fetched ${productIds.size} wishlist product IDs")
+                    },
+                    onFailure = { e ->
+                        Log.e("ProductViewModel", "Error fetching wishlist IDs: ${e.message}")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("ProductViewModel", "Exception fetching wishlist IDs: ${e.message}")
+            }
+        }
+    }
+
+    // Fetch all wishlist products
+    fun fetchWishlistProducts(userId: String) {
+        viewModelScope.launch {
+            _productState.value = ProductState.Loading
+
+            try {
+                val result = productRepository.getWishlistProducts(userId)
+
+                result.fold(
+                    onSuccess = { products ->
+                        _wishlistProducts.value = products
+                        _productState.value = ProductState.Success
+                        Log.d("ProductViewModel", "Fetched ${products.size} wishlist products")
+
+                        // Also update the IDs set
+                        _wishlistProductIds.value = products.map { it.id }.toSet()
+                    },
+                    onFailure = { e ->
+                        _productState.value = ProductState.Error(e.message ?: "Failed to fetch wishlist products")
+                    }
+                )
+            } catch (e: Exception) {
+                _productState.value = ProductState.Error(e.message ?: "An unexpected error occurred")
+            }
+        }
+    }
+
+    // Replace the toggleWishlist function with this optimistic update version
+    // Toggle wishlist status
+    fun toggleWishlist(userId: String, productId: String) {
+        viewModelScope.launch {
+            // Get current wishlist status
+            val isInWishlist = _wishlistProductIds.value.contains(productId)
+
+            // Optimistically update UI immediately
+            if (isInWishlist) {
+                // Remove from wishlist UI immediately
+                _wishlistProductIds.value -= productId
+            } else {
+                // Add to wishlist UI immediately
+                _wishlistProductIds.value += productId
+            }
+
+            try {
+                // Perform the actual backend operation without setting loading state
+                if (isInWishlist) {
+                    removeFromWishlistQuietly(userId, productId)
+                } else {
+                    addToWishlistQuietly(userId, productId)
+                }
+            } catch (e: Exception) {
+                // If exception occurred, revert the UI change
+                Log.e("ProductViewModel", "Exception toggling wishlist: ${e.message}")
+                if (isInWishlist) {
+                    // Revert back to being in wishlist
+                    _wishlistProductIds.value += productId
+                } else {
+                    // Revert back to not being in wishlist
+                    _wishlistProductIds.value -= productId
+                }
+            }
+        }
+    }
+
+    // Add these new quiet versions of the wishlist functions that don't set loading state
+    private fun addToWishlistQuietly(userId: String, productId: String) {
+        viewModelScope.launch {
+            try {
+                val result = productRepository.addToWishlist(userId, productId)
+
+                result.fold(
+                    onSuccess = {
+                        // Update local wishlist state
+                        _wishlistProductIds.value += productId
+
+                        // Refresh wishlist products without showing loading state
+                        refreshWishlistProductsQuietly(userId)
+                    },
+                    onFailure = { e ->
+                        // Revert the optimistic update
+                        _wishlistProductIds.value -= productId
+                        Log.e("ProductViewModel", "Error adding to wishlist: ${e.message}")
+                    }
+                )
+            } catch (e: Exception) {
+                // Revert the optimistic update
+                _wishlistProductIds.value -= productId
+                Log.e("ProductViewModel", "Exception adding to wishlist: ${e.message}")
+            }
+        }
+    }
+
+    private fun removeFromWishlistQuietly(userId: String, productId: String) {
+        viewModelScope.launch {
+            try {
+                val result = productRepository.removeFromWishlist(userId, productId)
+
+                result.fold(
+                    onSuccess = {
+                        // Update local wishlist state
+                        _wishlistProductIds.value -= productId
+
+                        // Refresh wishlist products without showing loading state
+                        refreshWishlistProductsQuietly(userId)
+                    },
+                    onFailure = { e ->
+                        // Revert the optimistic update
+                        _wishlistProductIds.value += productId
+                        Log.e("ProductViewModel", "Error removing from wishlist: ${e.message}")
+                    }
+                )
+            } catch (e: Exception) {
+                // Revert the optimistic update
+                _wishlistProductIds.value += productId
+                Log.e("ProductViewModel", "Exception removing from wishlist: ${e.message}")
+            }
+        }
+    }
+
+    // Add this helper function to refresh wishlist products without showing loading state
+    private fun refreshWishlistProductsQuietly(userId: String) {
+        viewModelScope.launch {
+            try {
+                val result = productRepository.getWishlistProducts(userId)
+
+                result.fold(
+                    onSuccess = { products ->
+                        _wishlistProducts.value = products
+                        // Also update the IDs set
+                        _wishlistProductIds.value = products.map { it.id }.toSet()
+                        Log.d("ProductViewModel", "Quietly refreshed ${products.size} wishlist products")
+                    },
+                    onFailure = { e ->
+                        Log.e("ProductViewModel", "Error refreshing wishlist products: ${e.message}")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("ProductViewModel", "Exception refreshing wishlist products: ${e.message}")
+            }
+        }
+    }
+
     // Product state sealed class
     sealed class ProductState {
         data object Initial : ProductState()
@@ -630,5 +860,6 @@ class ProductViewModel @Inject constructor(
         data object ProductAddedToCart : ProductState()
         data class Error(val message: String) : ProductState()
         data class RatingAdded(val rating: Rating) : ProductState()
+        data object RatingDeleted : ProductState()
     }
 }

@@ -29,8 +29,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RateReview
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -39,9 +41,12 @@ import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,6 +84,7 @@ import coil.request.ImageRequest
 import com.example.hci_project.model.Rating
 import com.example.hci_project.utils.toTitleCase
 import com.example.hci_project.viewmodel.AuthViewModel
+import com.example.hci_project.viewmodel.MessageViewModel
 import com.example.hci_project.viewmodel.ProductViewModel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -90,8 +96,10 @@ fun ProductDetailScreen(
     productId: String,
     onBackClick: () -> Unit,
     onCartClick: () -> Unit,
+    onMessageClick: (String) -> Unit = {}, // New parameter for message navigation
     productViewModel: ProductViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel = hiltViewModel(),
+    messageViewModel: MessageViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val currentUser by authViewModel.currentUser.collectAsState()
@@ -101,12 +109,18 @@ fun ProductDetailScreen(
     val userRating by productViewModel.userRating.collectAsState()
     val cartItemCount by productViewModel.cartItemCount.collectAsState()
     val sellerProfilePicture by productViewModel.sellerProfilePicture.collectAsState()
+    val messageState by messageViewModel.messageState.collectAsState()
+    val currentConversation by messageViewModel.currentConversation.collectAsState()
+
     var initialDataLoaded by remember { mutableStateOf(false) }
     var quantity by remember { mutableIntStateOf(1) }
     var showRatingDialog by remember { mutableStateOf(false) }
     var userRatingValue by remember { mutableFloatStateOf(0f) }
     var userComment by remember { mutableStateOf("") }
     var showAddedToCartDialog by remember { mutableStateOf(false) }
+    var showDeleteRatingDialog by remember { mutableStateOf(false) }
+    var ratingToDelete by remember { mutableStateOf<Rating?>(null) }
+    var showStartChatDialog by remember { mutableStateOf(false) }
 
     // Calculate average rating
     val averageRating = if (productRatings.isNotEmpty()) {
@@ -191,6 +205,28 @@ fun ProductDetailScreen(
         }
     }
 
+    // Handle message state changes
+    LaunchedEffect(messageState) {
+        when (messageState) {
+            is MessageViewModel.MessageState.Success -> {
+                // If we have a conversation, navigate to it
+                currentConversation?.let { conversation ->
+                    onMessageClick(conversation.id)
+                    messageViewModel.resetMessageState()
+                }
+            }
+            is MessageViewModel.MessageState.Error -> {
+                Toast.makeText(
+                    context,
+                    (messageState as MessageViewModel.MessageState.Error).message,
+                    Toast.LENGTH_LONG
+                ).show()
+                messageViewModel.resetMessageState()
+            }
+            else -> {}
+        }
+    }
+
     // Show added to cart dialog when product is added to cart
     LaunchedEffect(productState) {
         when (productState) {
@@ -208,6 +244,19 @@ fun ProductDetailScreen(
 
                 Log.d("ProductDetailScreen", "Rating added, refreshing ratings")
                 // Explicitly refresh ratings after a new rating is added
+                productViewModel.fetchRatingsForProduct(productId)
+                productViewModel.resetProductState()
+            }
+            is ProductViewModel.ProductState.RatingDeleted -> {
+                // Show success toast
+                Toast.makeText(
+                    context,
+                    "Review deleted successfully",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                Log.d("ProductDetailScreen", "Rating deleted, refreshing ratings")
+                // Explicitly refresh ratings after a rating is deleted
                 productViewModel.fetchRatingsForProduct(productId)
                 productViewModel.resetProductState()
             }
@@ -321,6 +370,87 @@ fun ProductDetailScreen(
                 }
             }
         }
+    }
+
+    // Delete rating confirmation dialog
+    if (showDeleteRatingDialog && ratingToDelete != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteRatingDialog = false
+                ratingToDelete = null
+            },
+            title = { Text("Delete Review") },
+            text = { Text("Are you sure you want to delete your review? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        ratingToDelete?.let { rating ->
+                            productViewModel.deleteRating(rating.id, productId)
+                        }
+                        showDeleteRatingDialog = false
+                        ratingToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteRatingDialog = false
+                        ratingToDelete = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Start chat confirmation dialog
+    if (showStartChatDialog) {
+        AlertDialog(
+            onDismissRequest = { showStartChatDialog = false },
+            title = { Text("Message Seller") },
+            text = { Text("Would you like to start a conversation with ${selectedProduct?.sellerName?.toTitleCase() ?: "the seller"}?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showStartChatDialog = false
+
+                        // Start a conversation
+                        currentUser?.let { user ->
+                            selectedProduct?.let { product ->
+                                messageViewModel.startOrGetConversation(
+                                    currentUser = user,
+                                    sellerId = product.sellerId,
+                                    sellerName = product.sellerName,
+                                    product = product
+                                )
+                            }
+                        } ?: run {
+                            Toast.makeText(
+                                context,
+                                "You need to be logged in to send messages",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                ) {
+                    Text("Start Chat")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showStartChatDialog = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     // Added to cart dialog
@@ -654,9 +784,20 @@ fun ProductDetailScreen(
                                         )
                                     }
 
-                                    // Message button
+                                    // Message button - now opens the chat dialog
                                     IconButton(
-                                        onClick = { /* TODO: Implement messaging */ }
+                                        onClick = {
+                                            // Don't allow messaging your own products
+                                            if (product.sellerId == currentUser?.userId) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "You cannot message yourself",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
+                                                showStartChatDialog = true
+                                            }
+                                        }
                                     ) {
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.Chat,
@@ -905,7 +1046,14 @@ fun ProductDetailScreen(
                         }
                     } else {
                         items(productRatings) { rating ->
-                            ReviewItem(rating = rating)
+                            ReviewItem(
+                                rating = rating,
+                                currentUserId = currentUser?.userId,
+                                onDeleteClick = {
+                                    ratingToDelete = rating
+                                    showDeleteRatingDialog = true
+                                }
+                            )
                         }
 
                         // Bottom spacing
@@ -915,14 +1063,34 @@ fun ProductDetailScreen(
                     }
                 }
             }
+
+            // Loading indicator for message operations
+            if (messageState is MessageViewModel.MessageState.Loading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.7f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
         }
     }
 }
 
 @Composable
-fun ReviewItem(rating: Rating) {
+fun ReviewItem(
+    rating: Rating,
+    currentUserId: String?,
+    onDeleteClick: () -> Unit
+) {
     val context = LocalContext.current
-    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) } // Added year for clarity
+    var showOptions by remember { mutableStateOf(false) }
+
+    // Check if this review belongs to the current user
+    val isCurrentUserReview = currentUserId != null && rating.userId == currentUserId
 
     Card(
         modifier = Modifier
@@ -935,59 +1103,113 @@ fun ReviewItem(rating: Rating) {
             // Reviewer info and date
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Reviewer name
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
-                    // Avatar - use profile picture if available, otherwise show initial
-                    if (rating.userProfilePicture.isNotEmpty()) {
-                        Image(
-                            painter = rememberAsyncImagePainter(
-                                ImageRequest.Builder(context)
-                                    .data(rating.userProfilePicture)
-                                    .crossfade(true)
-                                    .build()
-                            ),
-                            contentDescription = "User avatar",
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Avatar - use profile picture if available, otherwise show initial
+                        if (rating.userProfilePicture.isNotEmpty()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(
+                                    ImageRequest.Builder(context)
+                                        .data(rating.userProfilePicture)
+                                        .crossfade(true)
+                                        .build()
+                                ),
+                                contentDescription = "User avatar",
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = rating.userName.firstOrNull()?.toString()?.toTitleCase() ?: "U",
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Column {
                             Text(
-                                text = rating.userName.firstOrNull()?.toString()?.toTitleCase() ?: "U",
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
+                                text = dateFormat.format(rating.createdAt.toDate()),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                            Text(
+                                text = rating.userName.toTitleCase(),
+                                fontWeight = FontWeight.Medium
+                            )
+
+                            // Show "You" badge if this is the current user's review
+                            if (isCurrentUserReview) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "You",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Options menu
+                if (isCurrentUserReview) {
+                    Box {
+                        IconButton(
+                            onClick = { showOptions = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Options",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showOptions,
+                            onDismissRequest = { showOptions = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Delete Review") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    showOptions = false
+                                    onDeleteClick()
+                                }
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Text(
-                        text = rating.userName.toTitleCase(),
-                        fontWeight = FontWeight.Medium
-                    )
                 }
-
-                // Date
-                Text(
-                    text = dateFormat.format(rating.createdAt.toDate()),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -1016,3 +1238,4 @@ fun ReviewItem(rating: Rating) {
         }
     }
 }
+

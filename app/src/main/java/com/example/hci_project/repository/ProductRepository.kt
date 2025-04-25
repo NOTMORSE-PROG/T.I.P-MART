@@ -629,6 +629,25 @@ class ProductRepository @Inject constructor() {
         }
     }
 
+    // Add this new method to delete a rating
+    suspend fun deleteRating(ratingId: String): Result<Unit> {
+        return try {
+            Log.d("ProductRepository", "Deleting rating with ID: $ratingId")
+
+            // Get the rating document reference
+            val ratingRef = reviewsCollection.document(ratingId)
+
+            // Delete the rating document
+            ratingRef.delete().await()
+
+            Log.d("ProductRepository", "Rating deleted successfully: $ratingId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("ProductRepository", "Error deleting rating: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
     // Cart functions
     suspend fun addToCart(userId: String, productId: String, quantity: Int): Result<Unit> {
         return try {
@@ -750,6 +769,173 @@ class ProductRepository @Inject constructor() {
 
         } catch (e: Exception) {
             Log.e("ProductRepository", "Error removing from cart: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    // Add a product to the user's wishlist
+    suspend fun addToWishlist(userId: String, productId: String): Result<Unit> {
+        return try {
+            Log.d("ProductRepository", "Adding product to wishlist: $productId for user: $userId")
+
+            val wishlistDocRef = firestore.collection("wishlists").document(userId)
+
+            firestore.runTransaction { transaction ->
+                val wishlistDoc = transaction.get(wishlistDocRef)
+                val currentItems: List<String> = if (wishlistDoc.exists()) {
+                    @Suppress("UNCHECKED_CAST")
+                    wishlistDoc.get("items") as? List<String> ?: emptyList()
+                } else {
+                    emptyList()
+                }
+
+                if (wishlistDoc.exists()) {
+                    if (!currentItems.contains(productId)) {
+                        val updatedItems = currentItems + productId
+                        transaction.update(
+                            wishlistDocRef,
+                            mapOf(
+                                "items" to updatedItems,
+                                "updatedAt" to Timestamp.now()
+                            )
+                        )
+                    }
+                } else {
+                    val newWishlist = mapOf(
+                        "userId" to userId,
+                        "items" to listOf(productId),
+                        "createdAt" to Timestamp.now(),
+                        "updatedAt" to Timestamp.now()
+                    )
+                    transaction.set(wishlistDocRef, newWishlist)
+                }
+
+                null
+            }.await()
+
+            Log.d("ProductRepository", "Product added to wishlist successfully")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("ProductRepository", "Error adding to wishlist: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+
+    // Remove a product from the user's wishlist
+    suspend fun removeFromWishlist(userId: String, productId: String): Result<Unit> {
+        return try {
+            Log.d("ProductRepository", "Removing product from wishlist: $productId for user: $userId")
+
+            val wishlistDocRef = firestore.collection("wishlists").document(userId)
+            val wishlistDoc = wishlistDocRef.get().await()
+
+            if (wishlistDoc.exists()) {
+                @Suppress("UNCHECKED_CAST")
+                val currentItems = wishlistDoc.get("items") as? List<String> ?: listOf()
+
+                // Remove the product from the wishlist
+                val updatedItems = currentItems.filter { it != productId }
+
+                wishlistDocRef.update(
+                    "items", updatedItems,
+                    "updatedAt", Timestamp.now()
+                ).await()
+
+                Log.d("ProductRepository", "Product removed from wishlist successfully")
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("ProductRepository", "Error removing from wishlist: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    // Get all products in the user's wishlist
+    suspend fun getWishlistItems(userId: String): Result<List<String>> {
+        return try {
+            Log.d("ProductRepository", "Getting wishlist items for user: $userId")
+
+            val wishlistDoc = firestore.collection("wishlists").document(userId).get().await()
+
+            val wishlistItems = if (wishlistDoc.exists()) {
+                val itemsAny = wishlistDoc.get("items")
+                val currentItems = if (itemsAny is List<*>) {
+                    itemsAny.filterIsInstance<String>()
+                } else {
+                    listOf()
+                }
+                currentItems
+            } else {
+                listOf()
+            }
+
+            Log.d("ProductRepository", "Retrieved ${wishlistItems.size} wishlist items for user: $userId")
+            Result.success(wishlistItems)
+        } catch (e: Exception) {
+            Log.e("ProductRepository", "Error getting wishlist items: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    // Check if a product is in the user's wishlist
+    suspend fun isProductInWishlist(userId: String, productId: String): Result<Boolean> {
+        return try {
+            Log.d("ProductRepository", "Checking if product is in wishlist: $productId for user: $userId")
+
+            val wishlistDoc = firestore.collection("wishlists").document(userId).get().await()
+
+            val isInWishlist = if (wishlistDoc.exists()) {
+                @Suppress("UNCHECKED_CAST")
+                val items = wishlistDoc.get("items") as? List<String> ?: listOf()
+                items.contains(productId)
+            } else {
+                false
+            }
+
+            Log.d("ProductRepository", "Product $productId is in wishlist: $isInWishlist")
+            Result.success(isInWishlist)
+        } catch (e: Exception) {
+            Log.e("ProductRepository", "Error checking wishlist: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    // Get all products in the user's wishlist as Product objects
+    suspend fun getWishlistProducts(userId: String): Result<List<Product>> {
+        return try {
+            Log.d("ProductRepository", "Getting wishlist products for user: $userId")
+
+            // First get the list of product IDs in the wishlist
+            val wishlistResult = getWishlistItems(userId)
+
+            if (wishlistResult.isFailure) {
+                return Result.failure(wishlistResult.exceptionOrNull() ?: Exception("Failed to get wishlist items"))
+            }
+
+            val productIds = wishlistResult.getOrNull() ?: listOf()
+
+            if (productIds.isEmpty()) {
+                return Result.success(listOf())
+            }
+
+            // Then fetch all those products
+            val productsList = mutableListOf<Product>()
+
+            for (productId in productIds) {
+                val productResult = getProductById(productId)
+                if (productResult.isSuccess) {
+                    productResult.getOrNull()?.let { product ->
+                        productsList.add(product)
+                    }
+                }
+            }
+
+            Log.d("ProductRepository", "Retrieved ${productsList.size} wishlist products for user: $userId")
+            Result.success(productsList)
+        } catch (e: Exception) {
+            Log.e("ProductRepository", "Error getting wishlist products: ${e.message}", e)
             Result.failure(e)
         }
     }

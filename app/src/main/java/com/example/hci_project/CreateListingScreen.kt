@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -157,20 +158,21 @@ fun CreateListingScreen(
 
     val storagePermissionState = remember {
         mutableStateOf(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Android 14+ (API 34+)
+                true // No runtime permission needed for PhotoPicker
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Android 13 (API 33)
                 ContextCompat.checkSelfPermission(
                     context,
                     Manifest.permission.READ_MEDIA_IMAGES
                 ) == PackageManager.PERMISSION_GRANTED
             } else {
+                // Android 12 and below
                 ContextCompat.checkSelfPermission(
                     context,
                     Manifest.permission.READ_EXTERNAL_STORAGE
-                ) == PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE
-                        ) == PackageManager.PERMISSION_GRANTED
+                ) == PackageManager.PERMISSION_GRANTED
             }
         )
     }
@@ -189,7 +191,21 @@ fun CreateListingScreen(
         }
     }
 
-    // Image picker launcher
+    // Photo Picker launcher for Android 13+ (API 33+)
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            // Add new images to the existing list
+            selectedImages = selectedImages + uris
+            imageError = false
+            Log.d("CreateListingScreen", "Photo picker selection successful: ${uris.size} images")
+        } else {
+            Log.d("CreateListingScreen", "Photo picker selection returned no images")
+        }
+    }
+
+    // Legacy image picker launcher for Android 12 and below
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris ->
@@ -219,22 +235,17 @@ fun CreateListingScreen(
                 storagePermissionState.value = granted
                 Log.d("CreateListingScreen", "READ_MEDIA_IMAGES permission granted: $granted")
             }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                permissions[Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED]?.let { granted ->
+                    Log.d("CreateListingScreen", "READ_MEDIA_VISUAL_USER_SELECTED permission granted: $granted")
+                    // This permission is only used when needed, not stored in storagePermissionState
+                }
+            }
         } else {
             permissions[Manifest.permission.READ_EXTERNAL_STORAGE]?.let { granted ->
-                storagePermissionState.value = granted &&
-                        (ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE
-                        ) == PackageManager.PERMISSION_GRANTED)
+                storagePermissionState.value = granted
                 Log.d("CreateListingScreen", "READ_EXTERNAL_STORAGE permission granted: $granted")
-            }
-            permissions[Manifest.permission.WRITE_EXTERNAL_STORAGE]?.let { granted ->
-                storagePermissionState.value = granted &&
-                        (ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.READ_EXTERNAL_STORAGE
-                        ) == PackageManager.PERMISSION_GRANTED)
-                Log.d("CreateListingScreen", "WRITE_EXTERNAL_STORAGE permission granted: $granted")
             }
         }
 
@@ -277,6 +288,19 @@ fun CreateListingScreen(
         }
     }
 
+    // Function to launch the appropriate gallery/photo picker based on Android version
+    fun launchGallery() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Use PhotoPicker for Android 13+
+            photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            Log.d("CreateListingScreen", "Launching PhotoPicker for Android 13+")
+        } else {
+            // Use legacy content picker for Android 12 and below
+            galleryLauncher.launch("image/*")
+            Log.d("CreateListingScreen", "Launching legacy gallery picker for Android 12 and below")
+        }
+    }
+
     // Request permissions on initial load if needed
     LaunchedEffect(Unit) {
         // Check if we need to request permissions on startup
@@ -291,7 +315,6 @@ fun CreateListingScreen(
                 permissionsToRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
             } else {
                 permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             }
         }
 
@@ -302,6 +325,7 @@ fun CreateListingScreen(
         // Log initial permission states
         Log.d("CreateListingScreen", "Initial camera permission: ${cameraPermissionState.value}")
         Log.d("CreateListingScreen", "Initial storage permission: ${storagePermissionState.value}")
+        Log.d("CreateListingScreen", "Android SDK version: ${Build.VERSION.SDK_INT}")
     }
 
     // Handle navigation to home when requested
@@ -527,8 +551,8 @@ fun CreateListingScreen(
                                         when (which) {
                                             0 -> { // Camera option
                                                 pendingAction = "camera"
-                                                if (cameraPermissionState.value && storagePermissionState.value) {
-                                                    // Already have permissions, proceed
+                                                if (cameraPermissionState.value) {
+                                                    // Already have camera permission, proceed
                                                     launchCamera(context) { uri, error ->
                                                         if (uri != null) {
                                                             cameraUri = uri
@@ -538,42 +562,39 @@ fun CreateListingScreen(
                                                         }
                                                     }
                                                 } else {
-                                                    // Request permissions
-                                                    val permissionsToRequest = mutableListOf<String>()
-
-                                                    if (!cameraPermissionState.value) {
-                                                        permissionsToRequest.add(Manifest.permission.CAMERA)
-                                                    }
-
-                                                    if (!storagePermissionState.value) {
-                                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                            permissionsToRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
-                                                        } else {
-                                                            permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-                                                            permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                                        }
-                                                    }
-
-                                                    permissionLauncher.launch(permissionsToRequest.toTypedArray())
+                                                    // Request camera permission
+                                                    permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
                                                 }
                                             }
                                             1 -> { // Gallery option
                                                 pendingAction = "gallery"
-                                                if (storagePermissionState.value) {
-                                                    // Already have permission, proceed
-                                                    galleryLauncher.launch("image/*")
-                                                } else {
-                                                    // Request permission
-                                                    val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                        arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                                                    // For Android 14+, request the specific permission if needed
+                                                    if (ContextCompat.checkSelfPermission(
+                                                            context,
+                                                            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                                                        ) == PackageManager.PERMISSION_GRANTED) {
+                                                        launchGallery()
                                                     } else {
-                                                        arrayOf(
-                                                            Manifest.permission.READ_EXTERNAL_STORAGE,
-                                                            Manifest.permission.WRITE_EXTERNAL_STORAGE
-                                                        )
+                                                        permissionLauncher.launch(arrayOf(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
                                                     }
-
-                                                    permissionLauncher.launch(permissionToRequest)
+                                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                    // For Android 13, check READ_MEDIA_IMAGES
+                                                    if (ContextCompat.checkSelfPermission(
+                                                            context,
+                                                            Manifest.permission.READ_MEDIA_IMAGES
+                                                        ) == PackageManager.PERMISSION_GRANTED) {
+                                                        launchGallery()
+                                                    } else {
+                                                        permissionLauncher.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES))
+                                                    }
+                                                } else {
+                                                    // For Android 12 and below
+                                                    if (storagePermissionState.value) {
+                                                        launchGallery()
+                                                    } else {
+                                                        permissionLauncher.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE))
+                                                    }
                                                 }
                                             }
                                         }
@@ -654,6 +675,7 @@ fun CreateListingScreen(
                     )
                 }
 
+                // Rest of the form remains unchanged
                 // Title Field
                 OutlinedTextField(
                     value = title,

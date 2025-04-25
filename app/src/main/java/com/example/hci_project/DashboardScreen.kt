@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Image
@@ -94,6 +95,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -108,7 +110,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -122,10 +123,12 @@ import com.example.hci_project.model.Product
 import com.example.hci_project.ui.theme.HCI_PROJECYTheme
 import com.example.hci_project.utils.toTitleCase
 import com.example.hci_project.viewmodel.AuthViewModel
+import com.example.hci_project.viewmodel.MessageViewModel
 import com.example.hci_project.viewmodel.ProductViewModel
 import com.example.hci_project.viewmodel.RatingSortOption
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.Locale
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -134,7 +137,8 @@ import java.util.Locale
 fun DashboardScreen(
     onLogout: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel(),
-    productViewModel: ProductViewModel = hiltViewModel()
+    productViewModel: ProductViewModel = hiltViewModel(),
+    messageViewModel: MessageViewModel = hiltViewModel()
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showAboutScreen by remember { mutableStateOf(false) }
@@ -142,14 +146,20 @@ fun DashboardScreen(
     var showCreateListingScreen by remember { mutableStateOf(false) }
     var showProductDetailScreen by remember { mutableStateOf(false) }
     var showCartScreen by remember { mutableStateOf(false) }
+    var showConversationScreen by remember { mutableStateOf(false) }
     var selectedProductId by remember { mutableStateOf("") }
+    var selectedConversationId by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    var showWishlistScreen by remember { mutableStateOf(false) }
 
     // Get cart item count for badge
     val cartItemCount by productViewModel.cartItemCount.collectAsState()
+
+    // Get unread message count for badge
+    val unreadMessageCount by messageViewModel.totalUnreadCount.collectAsState()
 
     // Fetch cart items when the screen is first displayed
     val currentUser by viewModel.currentUser.collectAsState()
@@ -157,6 +167,13 @@ fun DashboardScreen(
         currentUser?.userId?.let { userId ->
             Log.d("DashboardScreen", "Fetching cart items for user: $userId")
             productViewModel.fetchCartItems(userId)
+
+            // Also fetch wishlist items
+            productViewModel.fetchWishlistProductIds(userId)
+
+            // Also fetch conversations and unread count
+            messageViewModel.getConversationsForUser(userId)
+            messageViewModel.getTotalUnreadCount(userId)
         }
     }
 
@@ -169,6 +186,10 @@ fun DashboardScreen(
     var selectedCampus by remember { mutableStateOf("All") }
     var ratingSortOption by remember { mutableStateOf(RatingSortOption.NONE) }
 
+    // First, add a state variable for the product to edit at the top level of DashboardScreen
+    var productToEdit by remember { mutableStateOf<Product?>(null) }
+
+    // Then, modify the main conditional rendering section to include EditListingScreen at the top level
     if (showProductDetailScreen) {
         ProductDetailScreen(
             productId = selectedProductId,
@@ -179,6 +200,11 @@ fun DashboardScreen(
             onCartClick = {
                 showProductDetailScreen = false
                 showCartScreen = true
+            },
+            onMessageClick = { conversationId ->
+                showProductDetailScreen = false
+                selectedConversationId = conversationId
+                showConversationScreen = true
             }
         )
     } else if (showCartScreen) {
@@ -196,6 +222,19 @@ fun DashboardScreen(
                 showProductDetailScreen = true
             }
         )
+    } else if (showConversationScreen) {
+        ConversationScreen(
+            conversationId = selectedConversationId,
+            onBackClick = {
+                showConversationScreen = false
+                selectedConversationId = ""
+
+                // Refresh unread count when returning from conversation
+                currentUser?.userId?.let { userId ->
+                    messageViewModel.getTotalUnreadCount(userId)
+                }
+            }
+        )
     } else if (showAboutScreen) {
         AboutScreen(onBackClick = { showAboutScreen = false })
     } else if (showEditProfileScreen) {
@@ -204,6 +243,26 @@ fun DashboardScreen(
         CreateListingScreen(
             onBackClick = { showCreateListingScreen = false },
             productViewModel = productViewModel
+        )
+    } else if (productToEdit != null) {
+        EditListingScreen(
+            product = productToEdit!!,
+            onBackClick = {
+                productToEdit = null
+                // Refresh user products when returning from edit screen
+                currentUser?.userId?.let { userId ->
+                    productViewModel.fetchUserProducts(userId)
+                }
+            }
+        )
+    } else if (showWishlistScreen) {
+        WishlistScreen(
+            onBackClick = { showWishlistScreen = false },
+            onProductClick = { productId ->
+                selectedProductId = productId
+                showWishlistScreen = false
+                showProductDetailScreen = true
+            }
         )
     } else {
         ModalNavigationDrawer(
@@ -421,7 +480,24 @@ fun DashboardScreen(
                         NavigationBarItem(
                             selected = selectedTab == 2,
                             onClick = { selectedTab = 2 },
-                            icon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = "Messages") },
+                            icon = {
+                                Box {
+                                    Icon(Icons.AutoMirrored.Filled.Message, contentDescription = "Messages")
+                                    // Show badge if there are unread messages
+                                    if (unreadMessageCount > 0) {
+                                        Badge(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = (-4).dp, y = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (unreadMessageCount > 99) "99+" else unreadMessageCount.toString(),
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            },
                             label = { Text("Messages") }
                         )
                         NavigationBarItem(
@@ -458,14 +534,25 @@ fun DashboardScreen(
                     )
                     1 -> SellTab(
                         onCreateListingClick = { showCreateListingScreen = true },
-                        modifier = Modifier.padding(paddingValues)
+                        onEditProduct = { product ->
+                            productToEdit = product
+                        },
+                        modifier = Modifier.padding(paddingValues),
                     )
-                    2 -> MessagesTab(modifier = Modifier.padding(paddingValues))
+                    2 -> MessagesTab(
+                        modifier = Modifier.padding(paddingValues),
+                        onConversationClick = { conversationId ->
+                            selectedConversationId = conversationId
+                            showConversationScreen = true
+                        },
+                        messageViewModel = messageViewModel
+                    )
                     3 -> NoticeTab(modifier = Modifier.padding(paddingValues))
                     4 -> SettingsTab(
                         onLogout = onLogout,
                         onAboutClick = { showAboutScreen = true },
                         onEditProfileClick = { showEditProfileScreen = true },
+                        onWishlistClick = { showWishlistScreen = true },
                         onDeleteAccount = {
                             viewModel.deleteAccount {
                                 onLogout()
@@ -480,6 +567,235 @@ fun DashboardScreen(
     }
 }
 
+@Composable
+fun MessagesTab(
+    modifier: Modifier = Modifier,
+    onConversationClick: (String) -> Unit,
+    messageViewModel: MessageViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel()
+) {
+    LocalContext.current
+    val currentUser by authViewModel.currentUser.collectAsState()
+    val conversations by messageViewModel.conversations.collectAsState()
+
+    // Load conversations when the tab is displayed
+    LaunchedEffect(currentUser) {
+        currentUser?.userId?.let { userId ->
+            Log.d("MessagesTab", "Loading conversations for user: $userId")
+            messageViewModel.getConversationsForUser(userId)
+        }
+    }
+
+    // Mark conversations as read when clicked
+    DisposableEffect(Unit) {
+        onDispose {
+            // Clean up if needed
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Messages",
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (conversations.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No messages yet",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                items(conversations) { conversation ->
+                    ConversationItem(
+                        conversation = conversation,
+                        currentUserId = currentUser?.userId ?: "",
+                        onClick = {
+                            // Mark as read when clicked
+                            currentUser?.userId?.let { userId ->
+                                messageViewModel.markConversationAsRead(conversation.id, userId)
+                            }
+                            onConversationClick(conversation.id)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ConversationItem(
+    conversation: com.example.hci_project.model.Conversation,
+    currentUserId: String,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+    val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
+
+    // Get the other participant's ID
+    val otherParticipantId = conversation.participants.find { it != currentUserId } ?: ""
+
+    // Get the other participant's name
+    val otherParticipantName = conversation.participantNames[otherParticipantId]?.toTitleCase() ?: "User"
+
+    // Get the other participant's profile picture
+    val otherParticipantProfile = conversation.participantProfiles[otherParticipantId] ?: ""
+
+    // Get unread count for current user
+    val unreadCount = conversation.unreadCount[currentUserId] ?: 0
+
+    // Format timestamp
+    val now = System.currentTimeMillis()
+    val messageTime = conversation.lastMessageTimestamp.toDate().time
+    val formattedTime = if (now - messageTime < 24 * 60 * 60 * 1000) {
+        // Less than 24 hours, show time
+        timeFormat.format(conversation.lastMessageTimestamp.toDate())
+    } else {
+        // More than 24 hours, show date
+        dateFormat.format(conversation.lastMessageTimestamp.toDate())
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (unreadCount > 0)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Avatar
+            if (otherParticipantProfile.isNotEmpty()) {
+                Image(
+                    painter = rememberAsyncImagePainter(
+                        ImageRequest.Builder(context)
+                            .data(otherParticipantProfile)
+                            .crossfade(true)
+                            .build()
+                    ),
+                    contentDescription = "Avatar for $otherParticipantName",
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // Fallback avatar with initial
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = otherParticipantName.firstOrNull()?.toString()?.uppercase() ?: "U",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = otherParticipantName,
+                        fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
+                    )
+                    Text(
+                        text = formattedTime,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Show product info if available
+                if (conversation.productTitle.isNotEmpty()) {
+                    Text(
+                        text = "Re: ${conversation.productTitle}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+
+                // Last message with sender prefix
+                val lastMessagePrefix = if (conversation.lastMessageSenderId == currentUserId) "You: " else ""
+                Text(
+                    text = if (conversation.lastMessage.isNotEmpty())
+                        "$lastMessagePrefix${conversation.lastMessage}"
+                    else
+                        "Start a conversation",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (unreadCount > 0) 0.8f else 0.6f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 14.sp
+                )
+            }
+
+            if (unreadCount > 0) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
 
 // Modify the HomeTab to force refresh ratings when needed
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -863,13 +1179,26 @@ fun RealProductCard(
     product: Product,
     onProductClick: (String) -> Unit,
     productViewModel: ProductViewModel,
+    authViewModel: AuthViewModel = hiltViewModel(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val currentUser by authViewModel.currentUser.collectAsState()
 
     // Get ratings from the global allRatings state
     val allRatings by productViewModel.allRatings.collectAsState()
     val ratings = allRatings[product.id] ?: emptyList()
+
+    // Get wishlist state
+    val wishlistProductIds by productViewModel.wishlistProductIds.collectAsState()
+    val isInWishlist = wishlistProductIds.contains(product.id)
+
+    // Check if product is in wishlist when first displayed
+    LaunchedEffect(product.id, currentUser) {
+        currentUser?.userId?.let { userId ->
+            productViewModel.checkIfInWishlist(userId, product.id)
+        }
+    }
 
     val averageRating = if (ratings.isNotEmpty()) {
         ratings.map { it.rating }.average().toFloat()
@@ -899,7 +1228,7 @@ fun RealProductCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
-            // Product Image
+            // Product Image with Wishlist button
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -929,6 +1258,31 @@ fun RealProductCard(
                             imageVector = Icons.Default.Image,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Wishlist button
+                IconButton(
+                    onClick = {
+                        currentUser?.userId?.let { userId ->
+                            productViewModel.toggleWishlist(userId, product.id)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isInWishlist) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = if (isInWishlist) "Remove from wishlist" else "Add to wishlist",
+                            tint = if (isInWishlist) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(4.dp)
                         )
                     }
                 }
@@ -1019,9 +1373,11 @@ fun RealProductCard(
     }
 }
 
+// Now modify the SellTab to pass the product to edit to the top level
 @Composable
 fun SellTab(
     onCreateListingClick: () -> Unit,
+    onEditProduct: (Product) -> Unit,  // Add this parameter
     modifier: Modifier = Modifier,
     authViewModel: AuthViewModel = hiltViewModel(),
     productViewModel: ProductViewModel = hiltViewModel()
@@ -1037,27 +1393,13 @@ fun SellTab(
     var showStatusDialog by remember { mutableStateOf(false) }
     var productToUpdateStatus by remember { mutableStateOf<Product?>(null) }
 
-    // Edit state
-    var showEditScreen by remember { mutableStateOf(false) }
-    var productToEdit by remember { mutableStateOf<Product?>(null) }
+    // Remove the edit state variables since we're handling it at the top level now
 
     // Fetch user products when the component is first composed
     LaunchedEffect(currentUser) {
         currentUser?.userId?.let { userId ->
             productViewModel.fetchUserProducts(userId)
         }
-    }
-
-    // Show edit screen if a product is selected for editing
-    if (showEditScreen && productToEdit != null) {
-        EditListingScreen(
-            product = productToEdit!!,
-            onBackClick = {
-                showEditScreen = false
-                productToEdit = null
-            }
-        )
-        return
     }
 
     // Delete confirmation dialog
@@ -1301,8 +1643,8 @@ fun SellTab(
                             showStatusDialog = true
                         },
                         onEditClick = {
-                            productToEdit = product
-                            showEditScreen = true
+                            // Call the new callback instead of setting local state
+                            onEditProduct(product)
                         }
                     )
                 }
@@ -1486,175 +1828,6 @@ fun UserProductCard(
 }
 
 @Composable
-fun MessagesTab(modifier: Modifier = Modifier) {
-    // Sample messages
-    val messages = listOf(
-        Message(
-            id = 1,
-            senderName = "John Doe",
-            lastMessage = "Hi, I'm interested in your calculator. Is it still available?",
-            time = "10:30 AM",
-            unread = true,
-            avatarRes = R.drawable.ic_launcher_foreground
-        ),
-        Message(
-            id = 2,
-            senderName = "Jane Smith",
-            lastMessage = "Thanks for the quick delivery! The textbook is in great condition.",
-            time = "Yesterday",
-            unread = false,
-            avatarRes = R.drawable.ic_launcher_foreground
-        ),
-        Message(
-            id = 3,
-            senderName = "Alex Chen",
-            lastMessage = "When are you available for the tutoring session?",
-            time = "Yesterday",
-            unread = true,
-            avatarRes = R.drawable.ic_launcher_foreground
-        ),
-        Message(
-            id = 4,
-            senderName = "Sarah Lee",
-            lastMessage = "I'll have a new batch of cookies next week if you're interested.",
-            time = "Monday",
-            unread = false,
-            avatarRes = R.drawable.ic_launcher_foreground
-        ),
-        Message(
-            id = 5,
-            senderName = "Mike Johnson",
-            lastMessage = "Do you have this uniform in size Large?",
-            time = "Sunday",
-            unread = false,
-            avatarRes = R.drawable.ic_launcher_foreground
-        )
-    )
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Messages",
-            fontWeight = FontWeight.Bold,
-            fontSize = 20.sp,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (messages.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No messages yet",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            } else {
-                items(messages) { message ->
-                    MessageItem(message = message)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun MessageItem(
-    message: Message,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable { /* TODO: Open conversation */ },
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (message.unread)
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            else
-                MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Avatar
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Image(
-                    painter = painterResource(id = message.avatarRes),
-                    contentDescription = "Avatar for ${message.senderName}",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = message.senderName,
-                        fontWeight = if (message.unread) FontWeight.Bold else FontWeight.Normal
-                    )
-                    Text(
-                        text = message.time,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = message.lastMessage,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (message.unread) 0.8f else 0.6f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 14.sp
-                )
-            }
-
-            if (message.unread) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun NoticeTab(modifier: Modifier = Modifier) {
     // Sample notifications
     val notifications = listOf(
@@ -1785,6 +1958,7 @@ fun SettingsTab(
     onLogout: () -> Unit,
     onAboutClick: () -> Unit,
     onEditProfileClick: () -> Unit,
+    onWishlistClick: () -> Unit,
     onDeleteAccount: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel()
@@ -1794,12 +1968,10 @@ fun SettingsTab(
     val authState by viewModel.authState.collectAsState()
     val context = LocalContext.current
 
-    // Debug log to check what user data we have
     LaunchedEffect(currentUser) {
         Log.d("SettingsTab", "Current user data: ${currentUser?.toString()}")
     }
 
-    // Delete Account Confirmation Dialog
     if (showDeleteConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
@@ -1819,9 +1991,7 @@ fun SettingsTab(
                 }
             },
             dismissButton = {
-                OutlinedButton(
-                    onClick = { showDeleteConfirmDialog = false }
-                ) {
+                OutlinedButton(onClick = { showDeleteConfirmDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -1840,12 +2010,8 @@ fun SettingsTab(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        Box(
-            modifier = Modifier.weight(1f)
-        ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth()
-            ) {
+        Box(modifier = Modifier.weight(1f)) {
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 item {
                     Card(
                         modifier = Modifier
@@ -1859,7 +2025,6 @@ fun SettingsTab(
                                 .padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // Profile picture - now using Coil to load from URL if available
                             Box(
                                 modifier = Modifier
                                     .size(80.dp)
@@ -1869,7 +2034,6 @@ fun SettingsTab(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (!currentUser?.profilePictureUrl.isNullOrEmpty()) {
-                                    // Load profile picture from URL
                                     Image(
                                         painter = rememberAsyncImagePainter(
                                             ImageRequest.Builder(context)
@@ -1882,7 +2046,6 @@ fun SettingsTab(
                                         contentScale = ContentScale.Crop
                                     )
                                 } else {
-                                    // Default icon if no profile picture
                                     Icon(
                                         imageVector = Icons.Default.Person,
                                         contentDescription = null,
@@ -1894,7 +2057,6 @@ fun SettingsTab(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // Use title-cased full name
                             val displayName = currentUser?.fullname
                                 ?.toTitleCase()
                                 .takeIf { !it.isNullOrBlank() } ?: "User Name"
@@ -1942,12 +2104,11 @@ fun SettingsTab(
                     }
                 }
 
-                // Settings options
                 item {
                     SettingsItem(
                         icon = Icons.Default.ShoppingBag,
                         title = "My Orders",
-                        onClick = { /* TODO: Navigate to orders */ }
+                        onClick = { }
                     )
                 }
 
@@ -1955,7 +2116,7 @@ fun SettingsTab(
                     SettingsItem(
                         icon = Icons.Default.Favorite,
                         title = "Wishlist",
-                        onClick = { /* TODO: Navigate to wishlist */ }
+                        onClick = onWishlistClick
                     )
                 }
 
@@ -1963,7 +2124,7 @@ fun SettingsTab(
                     SettingsItem(
                         icon = Icons.Default.CreditCard,
                         title = "Payment Methods",
-                        onClick = { /* TODO: Navigate to payment methods */ }
+                        onClick = { }
                     )
                 }
 
@@ -1971,7 +2132,7 @@ fun SettingsTab(
                     SettingsItem(
                         icon = Icons.Default.LocationOn,
                         title = "Address",
-                        onClick = { /* TODO: Navigate to address */ }
+                        onClick = { }
                     )
                 }
 
@@ -1979,7 +2140,7 @@ fun SettingsTab(
                     SettingsItem(
                         icon = Icons.Default.VerifiedUser,
                         title = "Verify Account",
-                        onClick = { /* TODO: Navigate to verification */ }
+                        onClick = { }
                     )
                 }
 
@@ -1991,7 +2152,6 @@ fun SettingsTab(
                     )
                 }
 
-                // Delete Account Option
                 item {
                     SettingsItem(
                         icon = Icons.Default.Delete,
@@ -2002,7 +2162,6 @@ fun SettingsTab(
             }
         }
 
-        // Loading indicator during account deletion
         if (authState is AuthViewModel.AuthState.Loading) {
             Box(
                 modifier = Modifier
@@ -2014,7 +2173,6 @@ fun SettingsTab(
             }
         }
 
-        // Error message
         if (authState is AuthViewModel.AuthState.Error) {
             Text(
                 text = (authState as AuthViewModel.AuthState.Error).message,
@@ -2026,7 +2184,6 @@ fun SettingsTab(
             )
         }
 
-        // Logout button - outside of LazyColumn to ensure it's always visible
         Button(
             onClick = onLogout,
             modifier = Modifier
@@ -2046,6 +2203,7 @@ fun SettingsTab(
         }
     }
 }
+
 
 @Composable
 fun SettingsItem(
@@ -2101,22 +2259,13 @@ data class Notification(
     val read: Boolean
 )
 
-data class Message(
-    val id: Int,
-    val senderName: String,
-    val lastMessage: String,
-    val time: String,
-    val unread: Boolean,
-    val avatarRes: Int
-)
-
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Preview(showBackground = true)
 @Composable
 fun DashboardScreenPreview() {
     HCI_PROJECYTheme {
         DashboardScreen(
-            onLogout = {}
+            onLogout = {},
         )
     }
 }
