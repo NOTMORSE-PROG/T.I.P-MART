@@ -95,31 +95,6 @@
    - Connect your Android device or start an emulator
    - Click "Run" in Android Studio
 
-## 📁 Project Structure
-
-\`\`\`
-app/src/main/java/com/example/hci_project/
-├── model/                  # Data models
-│   ├── User.kt
-│   ├── Product.kt
-│   ├── Order.kt
-│   └── ...
-├── repository/             # Data repositories
-│   ├── AuthRepository.kt
-│   ├── ProductRepository.kt
-│   └── ...
-├── viewmodel/             # ViewModels
-│   ├── AuthViewModel.kt
-│   ├── ProductViewModel.kt
-│   └── ...
-├── ui/
-│   ├── screens/           # Compose screens
-│   ├── components/        # Reusable UI components
-│   └── theme/            # App theming
-├── utils/                 # Utility classes
-├── di/                   # Dependency injection
-└── MainActivity.kt       # Main activity
-\`\`\`
 
 ## 🎯 Key Screens
 
